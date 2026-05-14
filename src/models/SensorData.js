@@ -62,6 +62,11 @@ const sensorDataSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    detectionMethod: {
+  type: String,
+  enum: ["rule-based", "ai-model"],
+  default: "rule-based",
+}
 
 
   },

@@ -17,7 +17,8 @@ const createSensorData = async (req, res) => {
     }
 
     const magnitude = calculateMagnitude(accelerometer);
-    const FALL_THRESHOLD = 25;
+    const FALL_THRESHOLD = 2.5;
+const detectionMethod = "rule-based";
     const isFallDetected = magnitude > FALL_THRESHOLD;
     const fallScore = magnitude;
 
