@@ -1,5 +1,5 @@
 const SensorData = require("../models/SensorData");
-
+const Alarm = require("../models/Alarm");
 const calculateMagnitude = (accelerometer) => {
   const { x, y, z } = accelerometer;
   return Math.sqrt(x * x + y * y + z * z);
@@ -22,19 +22,31 @@ const detectionMethod = "rule-based";
     const isFallDetected = magnitude > FALL_THRESHOLD;
     const fallScore = magnitude;
 
-    const sensorData = await SensorData.create({
-      userId,
-      deviceId,
-      timestamp,
+const sensorData = await SensorData.create({
+  userId,
+  deviceId,
+  timestamp,
 
-      accelerometer: {
-        ...accelerometer,
-        magnitude,
-      },
-      gyroscope,
-      isFallDetected,
-      fallScore,
-    });
+  accelerometer: {
+    ...accelerometer,
+    magnitude,
+  },
+
+  gyroscope,
+  isFallDetected,
+  fallScore,
+});
+
+if (isFallDetected) {
+  await Alarm.create({
+    userId,
+    deviceId,
+    sensorDataId: sensorData._id,
+    alarmType: "fall",
+    severity: "high",
+    message: "Fall detected by rule-based detection",
+  });
+}
 
     return res.status(201).json({
       success: true,
