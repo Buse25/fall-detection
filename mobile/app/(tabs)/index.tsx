@@ -1,148 +1,63 @@
-import { Accelerometer, Gyroscope } from "expo-sensors";
-import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 
-export default function App() {
-  const [accelData, setAccelData] = useState({ x: 0, y: 0, z: 0 });
-  const [gyroData, setGyroData] = useState({ x: 0, y: 0, z: 0 });
+export default function LoginScreen() {
+  const router = useRouter();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
-  useEffect(() => {
-    Accelerometer.setUpdateInterval(100);
-    Gyroscope.setUpdateInterval(100);
-
-    const accSubscription = Accelerometer.addListener((data) =>
-      setAccelData(data),
-    );
-    const gyroSubscription = Gyroscope.addListener((data) => setGyroData(data));
-
-    return () => {
-      accSubscription.remove();
-      gyroSubscription.remove();
-    };
-  }, []);
-
-  // BACKEND'İN BEKLEDİĞİ PAYLOAD YAPISI
-  const payload = {
-    userId: "test_kullanici_123",
-    deviceId: "mobil_cihaz_sude_01",
-    timestamp: new Date().toISOString(),
-    accelerometer: {
-      x: parseFloat(accelData.x.toFixed(3)),
-      y: parseFloat(accelData.y.toFixed(3)),
-      z: parseFloat(accelData.z.toFixed(3)),
-    },
-    gyroscope: {
-      x: parseFloat(gyroData.x.toFixed(3)),
-      y: parseFloat(gyroData.y.toFixed(3)),
-      z: parseFloat(gyroData.z.toFixed(3)),
-    },
-  };
-
-  const sendDataToBackend = async () => {
-    const backendURL = "http://10.17.121.187:5000/api/sensor-data";
-
-    try {
-      const response = await fetch(backendURL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+  const handleLogin = () => {
+    if (username.trim() !== '' && password.trim() !== '') {
+      Alert.alert("Başarılı", `Hoş geldin, ${username}!`);
+      
+      router.replace({
+        pathname: '/sensor',
+        params: { userId: username } 
       });
-
-      if (response.ok) {
-        Alert.alert("Başarılı!", "Veri MongoDB'ye kaydedildi! 🎉");
-      } else {
-        const errorData = await response.json();
-        console.log("Backend Hatası:", errorData);
-        Alert.alert("Format Hatası", JSON.stringify(errorData, null, 2));
-      }
-    } catch (error) {
-      console.error("Bağlantı hatası:", error);
-      Alert.alert("Bağlantı Koptu", "Sunucuya ulaşılamıyor.");
+    } else {
+      Alert.alert('Hata', 'Lütfen kullanıcı adı ve şifrenizi girin.');
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Düşme Tespiti Sensörleri</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Düşme Tespit Sistemi</Text>
+      <Text style={styles.subtitle}>Lütfen Giriş Yapın</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>İvmeölçer (Hareket/Darbe)</Text>
-        {}
-        <Text>X: {payload.accelerometer.x}</Text>
-        <Text>Y: {payload.accelerometer.y}</Text>
-        <Text>Z: {payload.accelerometer.z}</Text>
-      </View>
+      <TextInput
+        style={styles.input}
+        placeholder="Kullanıcı Adı"
+        value={username}
+        onChangeText={setUsername}
+        autoCapitalize="none"
+      />
+      
+      <TextInput
+        style={styles.input}
+        placeholder="Şifre"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry 
+      />
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Jiroskop (Dönüş/Açı)</Text>
-        {}
-        <Text>X: {payload.gyroscope.x}</Text>
-        <Text>Y: {payload.gyroscope.y}</Text>
-        <Text>Z: {payload.gyroscope.z}</Text>
-      </View>
-
-      <TouchableOpacity style={styles.button} onPress={sendDataToBackend}>
-        <Text style={styles.buttonText}>Veriyi Sunucuya Gönder</Text>
+      <TouchableOpacity style={styles.button} onPress={handleLogin}>
+        <Text style={styles.buttonText}>Giriş Yap</Text>
       </TouchableOpacity>
 
-      <View style={styles.jsonContainer}>
-        <Text style={styles.cardTitle}>Backend'e Gidecek Paket:</Text>
-        <Text style={styles.jsonText}>{JSON.stringify(payload, null, 2)}</Text>
-      </View>
-    </ScrollView>
+      <TouchableOpacity onPress={() => router.push('/register')}>
+        <Text style={styles.linkText}>Hesabın yok mu? Kayıt Ol</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    padding: 20,
-    justifyContent: "center",
-    backgroundColor: "#f5f5f5",
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 20,
-    marginTop: 30,
-    color: "#333",
-  },
-  card: {
-    backgroundColor: "white",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    elevation: 3,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: "#0056b3",
-  },
-  button: {
-    backgroundColor: "#28a745",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  buttonText: { color: "white", fontWeight: "bold", fontSize: 16 },
-  jsonContainer: {
-    backgroundColor: "#282c34",
-    padding: 15,
-    borderRadius: 10,
-    marginTop: 20,
-  },
-  jsonText: { color: "#98c379", fontFamily: "monospace", fontSize: 12 },
+  container: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#f5f5f5' },
+  title: { fontSize: 26, fontWeight: 'bold', textAlign: 'center', color: '#333', marginBottom: 5 },
+  subtitle: { fontSize: 16, textAlign: 'center', color: '#666', marginBottom: 30 },
+  input: { backgroundColor: 'white', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#ddd' },
+  button: { backgroundColor: '#0056b3', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+  buttonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  linkText: { color: '#0056b3', textAlign: 'center', marginTop: 20, fontWeight: 'bold' }
 });
