@@ -7,12 +7,13 @@ const calculateMagnitude = (accelerometer) => {
 
 const createSensorData = async (req, res) => {
   try {
-    const { userId, deviceId, timestamp, accelerometer, gyroscope } = req.body;
+    const { deviceId, timestamp, accelerometer, gyroscope } = req.body;
+    const userId = req.user._id.toString();
 
-    if (!userId || !deviceId || !accelerometer || !gyroscope) {
+    if (!deviceId || !accelerometer || !gyroscope) {
       return res.status(400).json({
         success: false,
-        message: "userId, deviceId, accelerometer and gyroscope are required",
+        message: "deviceId, accelerometer and gyroscope are required",
       });
     }
 
