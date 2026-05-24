@@ -27,6 +27,15 @@ describe("SensorData endpoints", () => {
   let token;
   let userId;
 
+  const expectValidationError = (response, expectedPaths) => {
+    expect(response.body.success).toBe(false);
+    expect(response.body.message).toBe("Validation failed");
+    expect(response.body.errors).toEqual(expect.any(Array));
+    expect(response.body.errors.map((error) => error.path)).toEqual(
+      expect.arrayContaining(expectedPaths)
+    );
+  };
+
   beforeEach(async () => {
     const response = await request(app).post("/api/auth/register").send({
       name: "Sensor User",
@@ -79,17 +88,65 @@ describe("SensorData endpoints", () => {
       .send({})
       .expect(400);
 
-    expect(response.body.success).toBe(false);
-    expect(response.body.message).toBe(
-      "deviceId, accelerometer and gyroscope are required"
-    );
+    expectValidationError(response, [
+      "deviceId",
+      "accelerometer.x",
+      "accelerometer.y",
+      "accelerometer.z",
+      "gyroscope.x",
+      "gyroscope.y",
+      "gyroscope.z",
+    ]);
+  });
+
+  it("rejects invalid sensor numeric fields", async () => {
+    const response = await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: 123,
+          accelerometer: {
+            x: "1",
+            y: 0,
+            z: 0,
+          },
+          gyroscope: {
+            x: 0,
+            y: "0",
+            z: 0,
+          },
+        })
+      )
+      .expect(400);
+
+    expectValidationError(response, [
+      "deviceId",
+      "accelerometer.x",
+      "gyroscope.y",
+    ]);
+  });
+
+  it("rejects invalid sensor timestamp", async () => {
+    const response = await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(buildSensorPayload({ timestamp: "not-a-date" }))
+      .expect(400);
+
+    expectValidationError(response, ["timestamp"]);
   });
 
   it("lists sensor data newest first", async () => {
     await request(app)
       .post("/api/sensor-data")
       .set("Authorization", `Bearer ${token}`)
-      .send(buildSensorPayload({ deviceId: "old-device" }))
+      .send(
+        buildSensorPayload({
+          deviceId: "old-device",
+          timestamp: "2026-05-18T10:00:00.000Z",
+        })
+      )
       .expect(201);
 
     await wait(5);
@@ -97,7 +154,12 @@ describe("SensorData endpoints", () => {
     await request(app)
       .post("/api/sensor-data")
       .set("Authorization", `Bearer ${token}`)
-      .send(buildSensorPayload({ deviceId: "new-device" }))
+      .send(
+        buildSensorPayload({
+          deviceId: "new-device",
+          timestamp: "2026-05-19T10:00:00.000Z",
+        })
+      )
       .expect(201);
 
     const response = await request(app)
@@ -107,7 +169,163 @@ describe("SensorData endpoints", () => {
 
     expect(response.body.success).toBe(true);
     expect(response.body.count).toBe(2);
+    expect(response.body.page).toBe(1);
+    expect(response.body.limit).toBe(10);
+    expect(response.body.total).toBe(2);
+    expect(response.body.pages).toBe(1);
     expect(response.body.data[0].deviceId).toBe("new-device");
+  });
+
+  it("paginates sensor data", async () => {
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "page-1",
+          timestamp: "2026-05-18T10:00:00.000Z",
+        })
+      )
+      .expect(201);
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "page-2",
+          timestamp: "2026-05-19T10:00:00.000Z",
+        })
+      )
+      .expect(201);
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "page-3",
+          timestamp: "2026-05-20T10:00:00.000Z",
+        })
+      )
+      .expect(201);
+
+    const response = await request(app)
+      .get("/api/sensor-data?page=2&limit=2")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.count).toBe(1);
+    expect(response.body.page).toBe(2);
+    expect(response.body.limit).toBe(2);
+    expect(response.body.total).toBe(3);
+    expect(response.body.pages).toBe(2);
+    expect(response.body.data[0].deviceId).toBe("page-1");
+  });
+
+  it("filters sensor data by device, fall status, and timestamp range", async () => {
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "watch-1",
+          timestamp: "2026-05-18T10:00:00.000Z",
+          accelerometer: {
+            x: 3,
+            y: 0,
+            z: 0,
+          },
+        })
+      )
+      .expect(201);
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "watch-1",
+          timestamp: "2026-05-19T10:00:00.000Z",
+        })
+      )
+      .expect(201);
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "watch-2",
+          timestamp: "2026-05-20T10:00:00.000Z",
+          accelerometer: {
+            x: 3,
+            y: 0,
+            z: 0,
+          },
+        })
+      )
+      .expect(201);
+
+    const response = await request(app)
+      .get(
+        "/api/sensor-data?deviceId=watch-1&isFallDetected=true&startDate=2026-05-18T00:00:00.000Z&endDate=2026-05-18T23:59:59.999Z"
+      )
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.count).toBe(1);
+    expect(response.body.total).toBe(1);
+    expect(response.body.data[0].deviceId).toBe("watch-1");
+    expect(response.body.data[0].isFallDetected).toBe(true);
+  });
+
+  it("returns only sensor data for the authenticated user", async () => {
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(buildSensorPayload({ deviceId: "own-device" }))
+      .expect(201);
+
+    const otherUserResponse = await request(app).post("/api/auth/register").send({
+      name: "Other Sensor User",
+      email: "other-sensor@example.com",
+      password: "password123",
+    });
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${otherUserResponse.body.token}`)
+      .send(buildSensorPayload({ deviceId: "other-device" }))
+      .expect(201);
+
+    const response = await request(app)
+      .get("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.count).toBe(1);
+    expect(response.body.total).toBe(1);
+    expect(response.body.data[0].deviceId).toBe("own-device");
+  });
+
+  it("rejects invalid sensor data query params", async () => {
+    const response = await request(app)
+      .get(
+        "/api/sensor-data?page=0&limit=101&isFallDetected=maybe&startDate=invalid-date&endDate=also-invalid"
+      )
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+
+    expectValidationError(response, [
+      "page",
+      "limit",
+      "isFallDetected",
+      "startDate",
+      "endDate",
+    ]);
   });
 
   it("returns latest sensor data", async () => {

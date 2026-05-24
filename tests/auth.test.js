@@ -9,6 +9,15 @@ describe("Auth endpoints", () => {
     password: "password123",
   };
 
+  const expectValidationError = (response, expectedPaths) => {
+    expect(response.body.success).toBe(false);
+    expect(response.body.message).toBe("Validation failed");
+    expect(response.body.errors).toEqual(expect.any(Array));
+    expect(response.body.errors.map((error) => error.path)).toEqual(
+      expect.arrayContaining(expectedPaths)
+    );
+  };
+
   it("registers a user", async () => {
     const response = await request(app)
       .post("/api/auth/register")
@@ -30,8 +39,20 @@ describe("Auth endpoints", () => {
       .send({ email: "missing@example.com" })
       .expect(400);
 
-    expect(response.body.success).toBe(false);
-    expect(response.body.message).toBe("Name, email and password are required");
+    expectValidationError(response, ["name", "password"]);
+  });
+
+  it("rejects registration with invalid email and short password", async () => {
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({
+        name: "Test User",
+        email: "not-an-email",
+        password: "12345",
+      })
+      .expect(400);
+
+    expectValidationError(response, ["email", "password"]);
   });
 
   it("rejects duplicate emails", async () => {
@@ -75,6 +96,15 @@ describe("Auth endpoints", () => {
 
     expect(response.body.success).toBe(false);
     expect(response.body.message).toBe("Invalid email or password");
+  });
+
+  it("rejects login with invalid email and missing password", async () => {
+    const response = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "not-an-email" })
+      .expect(400);
+
+    expectValidationError(response, ["email", "password"]);
   });
 
   it("returns the current user with a valid token", async () => {
