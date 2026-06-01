@@ -1,33 +1,53 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
+import { MaterialIcons } from '@expo/vector-icons';
+import { View, Platform } from 'react-native';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+export default function TabsLayout() {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+    <Tabs screenOptions={{
+      headerShown: false,
+      tabBarActiveTintColor: '#0040a1', 
+      tabBarInactiveTintColor: '#424654', 
+      tabBarStyle: {
+        backgroundColor: '#ffffff',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        height: Platform.OS === 'ios' ? 85 : 65,
+        paddingBottom: Platform.OS === 'ios' ? 25 : 10,
+        paddingTop: 10,
+        position: 'absolute',
+        borderTopWidth: 1,
+        borderColor: '#eceef0',
+        elevation: 10,
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+      },
+      tabBarLabelStyle: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginTop: 2,
+      },
+    }}>
+      {/* Ana Ekran Sekmesi */}
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="home" size={28} color={color} />
+          ),
         }}
       />
+
+      {/* Acil Durum Kişileri Sekmesi */}
       <Tabs.Screen
-        name="explore"
+        name="contacts"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Contacts',
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons name="contact-phone" size={28} color={color} />
+          ),
         }}
       />
     </Tabs>
