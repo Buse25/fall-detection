@@ -106,6 +106,24 @@ describe("Admin dashboard endpoints", () => {
     }
   });
 
+  it("rejects dashboard endpoints with an invalid token", async () => {
+    const endpoints = [
+      "/api/admin/users",
+      "/api/admin/falls",
+      "/api/admin/dashboard",
+    ];
+
+    for (const endpoint of endpoints) {
+      const response = await request(app)
+        .get(endpoint)
+        .set("Authorization", "Bearer invalid-token")
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe("Not authorized, token failed");
+    }
+  });
+
   it("lists users without passwords newest first", async () => {
     const admin = await registerAdmin();
 

@@ -130,11 +130,31 @@ describe("Auth endpoints", () => {
     expect(response.body.message).toBe("Not authorized, no token");
   });
 
+  it("rejects /me with an invalid token", async () => {
+    const response = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", "Bearer invalid-token")
+      .expect(401);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.message).toBe("Not authorized, token failed");
+  });
+
   it("rejects admin endpoint without a token", async () => {
     const response = await request(app).get("/api/admin/example").expect(401);
 
     expect(response.body.success).toBe(false);
     expect(response.body.message).toBe("Not authorized, no token");
+  });
+
+  it("rejects admin endpoint with an invalid token", async () => {
+    const response = await request(app)
+      .get("/api/admin/example")
+      .set("Authorization", "Bearer invalid-token")
+      .expect(401);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.message).toBe("Not authorized, token failed");
   });
 
   it("rejects admin endpoint for non-admin users", async () => {

@@ -125,7 +125,9 @@ const getSensorData = async (req, res) => {
 };
 const getLatestSensorData = async (req, res) => {
   try {
-    const latestData = await SensorData.findOne().sort({ createdAt: -1 });
+    const latestData = await SensorData.findOne({
+      userId: req.user._id.toString(),
+    }).sort({ createdAt: -1 });
 
     if (!latestData) {
       return res.status(404).json({
@@ -148,7 +150,10 @@ const getLatestSensorData = async (req, res) => {
 };
 const getFallDetectedData = async (req, res) => {
   try {
-    const fallData = await SensorData.find({ isFallDetected: true })
+    const fallData = await SensorData.find({
+      userId: req.user._id.toString(),
+      isFallDetected: true,
+    })
       .sort({ createdAt: -1 })
       .limit(100);
 

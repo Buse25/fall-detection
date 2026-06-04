@@ -57,6 +57,30 @@ describe("SensorData endpoints", () => {
     expect(response.body.message).toBe("Not authorized, no token");
   });
 
+  it("rejects sensor endpoints with an invalid token", async () => {
+    const endpoints = [
+      { method: "post", url: "/api/sensor-data" },
+      { method: "get", url: "/api/sensor-data" },
+      { method: "get", url: "/api/sensor-data/latest" },
+      { method: "get", url: "/api/sensor-data/falls" },
+    ];
+
+    for (const endpoint of endpoints) {
+      const requestBuilder = request(app)[endpoint.method](endpoint.url).set(
+        "Authorization",
+        "Bearer invalid-token"
+      );
+
+      const response =
+        endpoint.method === "post"
+          ? await requestBuilder.send(buildSensorPayload()).expect(401)
+          : await requestBuilder.expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toBe("Not authorized, token failed");
+    }
+  });
+
   it("creates sensor data and calculates magnitude", async () => {
     const response = await request(app)
       .post("/api/sensor-data")
@@ -344,6 +368,44 @@ describe("SensorData endpoints", () => {
     expect(response.body.data.deviceId).toBe("latest-device");
   });
 
+  it("returns latest sensor data only for the authenticated user", async () => {
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "own-latest",
+          timestamp: "2026-05-18T10:00:00.000Z",
+        })
+      )
+      .expect(201);
+
+    const otherUserResponse = await request(app).post("/api/auth/register").send({
+      name: "Other Latest User",
+      email: "other-latest@example.com",
+      password: "password123",
+    });
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${otherUserResponse.body.token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "other-latest",
+          timestamp: "2026-05-20T10:00:00.000Z",
+        })
+      )
+      .expect(201);
+
+    const response = await request(app)
+      .get("/api/sensor-data/latest")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data.deviceId).toBe("own-latest");
+    expect(response.body.data.userId).toBe(userId);
+  });
+
   it("returns 404 when no latest sensor data exists", async () => {
     const response = await request(app)
       .get("/api/sensor-data/latest")
@@ -409,5 +471,53 @@ describe("SensorData endpoints", () => {
     expect(response.body.success).toBe(true);
     expect(response.body.count).toBe(1);
     expect(response.body.data[0].deviceId).toBe("fall-device");
+  });
+
+  it("lists only fall detected data for the authenticated user", async () => {
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "own-fall",
+          accelerometer: {
+            x: 3,
+            y: 0,
+            z: 0,
+          },
+        })
+      )
+      .expect(201);
+
+    const otherUserResponse = await request(app).post("/api/auth/register").send({
+      name: "Other Falls User",
+      email: "other-falls@example.com",
+      password: "password123",
+    });
+
+    await request(app)
+      .post("/api/sensor-data")
+      .set("Authorization", `Bearer ${otherUserResponse.body.token}`)
+      .send(
+        buildSensorPayload({
+          deviceId: "other-fall",
+          accelerometer: {
+            x: 3,
+            y: 0,
+            z: 0,
+          },
+        })
+      )
+      .expect(201);
+
+    const response = await request(app)
+      .get("/api/sensor-data/falls")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.count).toBe(1);
+    expect(response.body.data[0].deviceId).toBe("own-fall");
+    expect(response.body.data[0].userId).toBe(userId);
   });
 });
