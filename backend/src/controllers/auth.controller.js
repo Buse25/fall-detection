@@ -111,8 +111,55 @@ const getMe = async (req, res) => {
     });
 };
 
+const updateMe = async (req, res) => {
+    try {
+        const allowedFields = [
+            "name",
+            "profileType",
+            "emergencyContactName",
+            "emergencyContactPhone",
+        ];
+
+        const updateData = {};
+        allowedFields.forEach((field) => {
+            if (req.body[field] !== undefined) {
+                updateData[field] = req.body[field];
+            }
+        });
+
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            updateData,
+            {
+                new: true,
+                runValidators: true,
+            }
+        ).select("-password");
+
+        if (!updatedUser) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            user: updatedUser,
+        });
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server error while updating profile",
+            error: error.message,
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
     getMe,
+    updateMe,
 };

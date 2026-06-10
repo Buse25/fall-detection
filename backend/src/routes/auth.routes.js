@@ -4,6 +4,7 @@ const {
     register,
     login,
     getMe,
+    updateMe,
 } = require("../controllers/auth.controller");
 
 const { protect } = require("../middleware/auth.middleware");
@@ -18,5 +19,6 @@ const router = express.Router();
 router.post("/register", registerValidation, handleValidationErrors, register);
 router.post("/login", loginValidation, handleValidationErrors, login);
 router.get("/me", protect, getMe);
+router.patch("/me", protect, updateMe);
 
 module.exports = router;

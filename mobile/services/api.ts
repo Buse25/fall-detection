@@ -6,7 +6,7 @@
  * - Android emülatör: 10.0.2.2 (host loopback'e yönlenir)
  * - iOS simülatör: localhost veya 127.0.0.1
  */
-export const BASE_URL = 'http://10.233.90.122:5000';
+export const BASE_URL = 'http://10.84.250.122:5000';
 
 /** JWT token ve kullanıcı bilgisini bellekte tutan basit depo. */
 let _token: string | null = null;

@@ -27,6 +27,22 @@ const userSchema = new mongoose.Schema(
             enum: ["user", "admin"],
             default: "user",
         },
+        profileType: {
+            type: String,
+            enum: ["elderly", "worker", "athlete", "other"],
+            default: "other",
+            trim: true,
+        },
+        emergencyContactName: {
+            type: String,
+            default: "",
+            trim: true,
+        },
+        emergencyContactPhone: {
+            type: String,
+            default: "",
+            trim: true,
+        },
     },
     {
         timestamps: true,
