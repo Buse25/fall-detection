@@ -2,7 +2,7 @@ const Alarm = require("../models/Alarm");
 
 const getAlarms = async (req, res) => {
   try {
-    const alarms = await Alarm.find()
+    const alarms = await Alarm.find({ userId: req.user._id.toString() })
       .populate("sensorDataId")
       .sort({ createdAt: -1 })
       .limit(100);
@@ -23,7 +23,10 @@ const getAlarms = async (req, res) => {
 
 const getAlarmById = async (req, res) => {
   try {
-    const alarm = await Alarm.findById(req.params.id).populate("sensorDataId");
+    const alarm = await Alarm.findOne({
+      _id: req.params.id,
+      userId: req.user._id.toString(),
+    }).populate("sensorDataId");
 
     if (!alarm) {
       return res.status(404).json({
@@ -47,13 +50,16 @@ const getAlarmById = async (req, res) => {
 
 const resolveAlarm = async (req, res) => {
   try {
-    const alarm = await Alarm.findByIdAndUpdate(
-      req.params.id,
+    const alarm = await Alarm.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        userId: req.user._id.toString(),
+      },
       {
         isResolved: true,
         resolvedAt: new Date(),
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!alarm) {

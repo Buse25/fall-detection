@@ -7,12 +7,13 @@ const calculateMagnitude = (accelerometer) => {
 
 const createSensorData = async (req, res) => {
   try {
-    const { userId, deviceId, timestamp, accelerometer, gyroscope } = req.body;
+    const { deviceId, timestamp, accelerometer, gyroscope } = req.body;
+    const userId = req.user._id.toString();
 
-    if (!userId || !deviceId || !accelerometer || !gyroscope) {
+    if (!deviceId || !accelerometer || !gyroscope) {
       return res.status(400).json({
         success: false,
-        message: "userId, deviceId, accelerometer and gyroscope are required",
+        message: "deviceId, accelerometer and gyroscope are required",
       });
     }
 
@@ -64,13 +65,54 @@ if (isFallDetected) {
 
 const getSensorData = async (req, res) => {
   try {
-    const sensorData = await SensorData.find()
-      .sort({ createdAt: -1 })
-      .limit(100);
+    const {
+      page = "1",
+      limit = "10",
+      deviceId,
+      isFallDetected,
+      startDate,
+      endDate,
+    } = req.query;
+    const pageNumber = Number.parseInt(page, 10);
+    const limitNumber = Number.parseInt(limit, 10);
+    const filter = {
+      userId: req.user._id.toString(),
+    };
+
+    if (deviceId) {
+      filter.deviceId = deviceId;
+    }
+
+    if (isFallDetected !== undefined) {
+      filter.isFallDetected = isFallDetected === "true";
+    }
+
+    if (startDate || endDate) {
+      filter.timestamp = {};
+
+      if (startDate) {
+        filter.timestamp.$gte = new Date(startDate);
+      }
+
+      if (endDate) {
+        filter.timestamp.$lte = new Date(endDate);
+      }
+    }
+
+    const skip = (pageNumber - 1) * limitNumber;
+    const total = await SensorData.countDocuments(filter);
+    const sensorData = await SensorData.find(filter)
+      .sort({ timestamp: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber);
 
     return res.status(200).json({
       success: true,
       count: sensorData.length,
+      page: pageNumber,
+      limit: limitNumber,
+      total,
+      pages: Math.ceil(total / limitNumber),
       data: sensorData,
     });
   } catch (error) {
@@ -83,7 +125,9 @@ const getSensorData = async (req, res) => {
 };
 const getLatestSensorData = async (req, res) => {
   try {
-    const latestData = await SensorData.findOne().sort({ createdAt: -1 });
+    const latestData = await SensorData.findOne({
+      userId: req.user._id.toString(),
+    }).sort({ createdAt: -1 });
 
     if (!latestData) {
       return res.status(404).json({
@@ -106,7 +150,10 @@ const getLatestSensorData = async (req, res) => {
 };
 const getFallDetectedData = async (req, res) => {
   try {
-    const fallData = await SensorData.find({ isFallDetected: true })
+    const fallData = await SensorData.find({
+      userId: req.user._id.toString(),
+      isFallDetected: true,
+    })
       .sort({ createdAt: -1 })
       .limit(100);
 
