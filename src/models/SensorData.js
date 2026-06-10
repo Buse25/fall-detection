@@ -36,21 +36,39 @@ const sensorDataSchema = new mongoose.Schema(
         type: Number,
       },
     },
-
     gyroscope: {
       x: {
         type: Number,
         required: true,
       },
+
       y: {
         type: Number,
         required: true,
       },
+
       z: {
         type: Number,
         required: true,
       },
     },
+
+    isFallDetected: {
+      type: Boolean,
+      default: false,
+    },
+
+    fallScore: {
+      type: Number,
+      default: 0,
+    },
+    detectionMethod: {
+  type: String,
+  enum: ["rule-based", "ai-model"],
+  default: "rule-based",
+}
+
+
   },
   {
     timestamps: true,
