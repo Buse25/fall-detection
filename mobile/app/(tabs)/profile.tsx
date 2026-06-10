@@ -21,6 +21,7 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [name, setName] = useState('');
+  const [profileType, setProfileType] = useState('elderly');
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +49,7 @@ export default function ProfileScreen() {
       if (response.ok && data.success) {
         setProfile(data.user);
         setName(data.user.name || '');
+        setProfileType(data.user.profileType || 'elderly');
       } else if (response.status === 401) {
         Alert.alert('Oturum Süresi Doldu', 'Lütfen tekrar giriş yapın.', [
           { text: 'Giriş Yap', onPress: () => { clearAuth(); router.replace('/'); } },
@@ -82,6 +84,7 @@ export default function ProfileScreen() {
         headers: authHeaders(),
         body: JSON.stringify({
           name: name.trim(),
+          profileType,
           emergencyContactName: emergencyContactName.trim(),
           emergencyContactPhone: emergencyContactPhone.trim(),
         }),
@@ -96,6 +99,7 @@ export default function ProfileScreen() {
         if (data.user) {
           setProfile(data.user);
           setName(data.user.name || '');
+          setProfileType(data.user.profileType || 'elderly');
         }
       } else {
         Alert.alert(
@@ -208,6 +212,42 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          {/* ---- Profil Tipi ---- */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Profil Tipi</Text>
+            <Text style={styles.sectionSub}>
+              Düşme tespit algoritmasını optimize eder.
+            </Text>
+
+            <View style={styles.cardContainer}>
+              <TouchableOpacity
+                style={[styles.profileCard, profileType === 'elderly' && styles.profileCardActive]}
+                onPress={() => setProfileType('elderly')}
+              >
+                {profileType === 'elderly' && (
+                  <MaterialIcons name="check-circle" size={20} color="#0040a1" style={styles.checkIcon} />
+                )}
+                <View style={styles.iconCircle}>
+                  <MaterialIcons name="elderly" size={32} color="#0056d2" />
+                </View>
+                <Text style={styles.cardTitle}>Yaşlı Kullanıcı</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.profileCard, profileType === 'active' && styles.profileCardActive]}
+                onPress={() => setProfileType('active')}
+              >
+                {profileType === 'active' && (
+                  <MaterialIcons name="check-circle" size={20} color="#0040a1" style={styles.checkIcon} />
+                )}
+                <View style={styles.iconCircle}>
+                  <MaterialIcons name="directions-run" size={32} color="#0056d2" />
+                </View>
+                <Text style={styles.cardTitle}>Genç/Aktif</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* ---- Acil Durum Kişisi ---- */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Acil Durum Kişisi</Text>
@@ -315,6 +355,18 @@ const styles = StyleSheet.create({
   inputIcon: { paddingHorizontal: 14 },
   input: { flex: 1, fontSize: 15, color: '#191c1e' },
   inputHint: { fontSize: 12, color: '#737785', marginTop: 4 },
+  cardContainer: { flexDirection: 'row', gap: 16, marginTop: 8 },
+  profileCard: {
+    flex: 1, backgroundColor: '#f2f4f6', borderRadius: 16, padding: 12,
+    alignItems: 'center', borderWidth: 2, borderColor: 'transparent',
+  },
+  profileCardActive: { borderColor: '#0040a1', backgroundColor: '#ffffff', elevation: 2 },
+  checkIcon: { position: 'absolute', top: 8, right: 8 },
+  iconCircle: {
+    width: 56, height: 56, borderRadius: 28, backgroundColor: '#dae2ff',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 8,
+  },
+  cardTitle: { fontSize: 14, fontWeight: '600', color: '#0040a1', textAlign: 'center' },
   saveButton: {
     height: 64, backgroundColor: '#0040a1', borderRadius: 12,
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',

@@ -1,11 +1,14 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { connectSocket } from '@/services/socket';
+import { initAuth, getToken } from '@/services/api';
+import { requestInitialPermissions } from '@/services/permissions';
+import { connectSocket, onFallDetected } from '@/services/socket';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -15,7 +18,36 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => {
-    connectSocket();
+    initAuth().then(() => {
+      const token = getToken();
+      if (token) {
+        connectSocket();
+      }
+    });
+
+    requestInitialPermissions().then((result) => {
+      if (!result.granted) {
+        Alert.alert(
+          'Uyarı',
+          'Sensör izni verilmediği için düşme tespiti özellikleri çalışmayacaktır.'
+        );
+      }
+    });
+
+    const unsubFall = onFallDetected((payload) => {
+      router.push({
+        pathname: '/alarm',
+        params: {
+          alarmId: payload.alarmId,
+          fallScore: payload.fallScore,
+          countdownSec: payload.countdownSec,
+        }
+      });
+    });
+
+    return () => {
+      unsubFall();
+    };
   }, []);
 
   return (

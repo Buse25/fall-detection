@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Vibration, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+
+import { BASE_URL, authHeaders } from '@/services/api';
 
 export default function AlarmScreen() {
   const router = useRouter();
-  const [timeLeft, setTimeLeft] = useState(10);
+  const { alarmId, fallScore, countdownSec } = useLocalSearchParams<{ alarmId?: string, fallScore?: string, countdownSec?: string }>();
+  
+  const [timeLeft, setTimeLeft] = useState(countdownSec ? parseInt(countdownSec, 10) : 10);
 
   useEffect(() => {
     Vibration.vibrate([500, 500, 500]);
@@ -25,8 +29,26 @@ export default function AlarmScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  const cancelAlarm = () => {
+  const cancelAlarm = async () => {
     Vibration.cancel();
+
+    if (alarmId) {
+      try {
+        const response = await fetch(`${BASE_URL}/api/alarms/${alarmId}/resolve`, {
+          method: 'PATCH',
+          headers: authHeaders(),
+        });
+
+        if (!response.ok) {
+          throw new Error('API isteği başarısız');
+        }
+      } catch (err) {
+        console.error('Alarm iptal edilemedi:', err);
+        Alert.alert('Bağlantı Hatası', 'İptal işlemi başarısız oldu. Lütfen tekrar deneyin.');
+        return; // Geri sayımı durdurmamak için dönüyoruz.
+      }
+    }
+
     router.back();
   };
 

@@ -5,10 +5,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Accelerometer, Gyroscope } from 'expo-sensors';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import CatchMeIcon from '@/components/CatchMeIcon';
-import { clearAuth } from '@/services/api';
+import { clearAuth, getUserId, getUserName } from '@/services/api';
 import {
   emitSensorWindow,
   onSocketConnectionChange,
@@ -25,7 +25,9 @@ type NetworkStatus = 'idle' | 'online' | 'offline';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { userId, userName } = useLocalSearchParams<{ userId: string; userName: string }>();
+  
+  const userId = getUserId();
+  const userName = getUserName();
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>('idle');
@@ -41,6 +43,12 @@ export default function HomeScreen() {
   useEffect(() => {
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
+
+  // Mount olduğunda başlat, unmount olduğunda durdur
+  useEffect(() => {
+    setIsStreaming(true);
+    return () => setIsStreaming(false);
+  }, []);
 
   /* Sensör dinleyicileri — ref'lere yazar, state güncellemez (performans) */
   useEffect(() => {
@@ -104,7 +112,7 @@ export default function HomeScreen() {
 
       if (windowBufferRef.current.length >= WINDOW_SIZE) {
         const payload = {
-          userId: (userId as string) || 'anonim_kullanici',
+          userId: userId || 'anonim_kullanici',
           deviceId: 'mobil_cihaz_01',
           windowStart: windowStartRef.current,
           windowEnd: now,
@@ -161,6 +169,10 @@ export default function HomeScreen() {
     networkStatus === 'online' ? '#0040a1' :
     networkStatus === 'offline' ? '#bb0112' : '#737785';
 
+  if (!userId) {
+    return <Redirect href="/" />;
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -208,7 +220,7 @@ export default function HomeScreen() {
         <Text style={styles.infoText}>
           {isStreaming
             ? `Pencere: ${windowProgress}/${WINDOW_SIZE} okuma · ${windowsSent} pencere gönderildi`
-            : 'Başlatmak için düğmeye dokunun'}
+            : 'Sensör akışı durduruldu. Başlatmak için düğmeye dokunun.'}
         </Text>
 
         <View style={styles.grid}>

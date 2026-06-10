@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { BASE_URL, setAuth } from '@/services/api';
+import { disconnectSocket, connectSocket } from '@/services/socket';
 import CatchMeIcon from '@/components/CatchMeIcon';
 
 export default function LoginScreen() {
@@ -38,6 +39,11 @@ export default function LoginScreen() {
 
       if (response.ok && data.success) {
         setAuth(data.token, data.user.id, data.user.name);
+        
+        // Refresh socket connection with new token
+        disconnectSocket();
+        connectSocket();
+
         router.replace({
           pathname: '/(tabs)/home',
           params: { userId: data.user.id, userName: data.user.name },
