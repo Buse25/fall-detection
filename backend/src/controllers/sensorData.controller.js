@@ -1,9 +1,6 @@
 const SensorData = require("../models/SensorData");
-<<<<<<< HEAD
-
-=======
 const Alarm = require("../models/Alarm");
->>>>>>> feature/frontend
+
 const calculateMagnitude = (accelerometer) => {
   const { x, y, z } = accelerometer;
   return Math.sqrt(x * x + y * y + z * z);
@@ -22,19 +19,6 @@ const createSensorData = async (req, res) => {
     }
 
     const magnitude = calculateMagnitude(accelerometer);
-<<<<<<< HEAD
-
-    const sensorData = await SensorData.create({
-      userId,
-      deviceId,
-      timestamp,
-      accelerometer: {
-        ...accelerometer,
-        magnitude,
-      },
-      gyroscope,
-    });
-=======
     const FALL_THRESHOLD = 2.5;
 const detectionMethod = "rule-based";
     const isFallDetected = magnitude > FALL_THRESHOLD;
@@ -65,7 +49,6 @@ if (isFallDetected) {
     message: "Fall detected by rule-based detection",
   });
 }
->>>>>>> feature/frontend
 
     return res.status(201).json({
       success: true,
@@ -141,8 +124,6 @@ const getSensorData = async (req, res) => {
     });
   }
 };
-<<<<<<< HEAD
-=======
 const getLatestSensorData = async (req, res) => {
   try {
     const latestData = await SensorData.findOne({
@@ -190,14 +171,10 @@ const getFallDetectedData = async (req, res) => {
     });
   }
 };
->>>>>>> feature/frontend
 
 module.exports = {
   createSensorData,
   getSensorData,
-<<<<<<< HEAD
-=======
   getLatestSensorData,
   getFallDetectedData,
->>>>>>> feature/frontend
 };
