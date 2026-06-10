@@ -10,8 +10,16 @@ const MAX_OFFLINE_QUEUE = 100;
 type ConnectionListener = (connected: boolean) => void;
 type QueueListener = (length: number) => void;
 
+export interface FallDetectedPayload {
+  alarmId: string;
+  fallScore: number;
+  countdownSec: number;
+}
+type FallListener = (payload: FallDetectedPayload) => void;
+
 const connectionListeners = new Set<ConnectionListener>();
 const queueListeners = new Set<QueueListener>();
+const fallListeners = new Set<FallListener>();
 
 function notifyConnectionListeners(connected: boolean) {
   connectionListeners.forEach(fn => fn(connected));
@@ -54,6 +62,11 @@ export function connectSocket(): Socket {
     console.log('[Socket] Bağlandı:', socket?.id);
     notifyConnectionListeners(true);
     flushOfflineQueue();
+  });
+
+  socket.on('fall_detected', (payload: FallDetectedPayload) => {
+    console.log('[Socket] Düşme tespit edildi (fall_detected):', payload);
+    fallListeners.forEach(fn => fn(payload));
   });
 
   socket.on('disconnect', reason => {
@@ -99,6 +112,12 @@ export function onOfflineQueueChange(fn: QueueListener): () => void {
   queueListeners.add(fn);
   fn(offlineQueue.length);
   return () => queueListeners.delete(fn);
+}
+
+/** Düşme tespiti event'lerini dinler. */
+export function onFallDetected(fn: FallListener): () => void {
+  fallListeners.add(fn);
+  return () => fallListeners.delete(fn);
 }
 
 export interface SensorReading {
