@@ -36,10 +36,19 @@ function flushOfflineQueue(): void {
 }
 
 /** Uygulama açıldığında çağrılır; mevcut bağlantı varsa yeniden kullanır. */
-export function connectSocket(): Socket {
-  if (socket?.connected) return socket;
+export function connectSocket(token?: string): Socket | null {
+  const authToken = token ?? getToken();
+
+  if (!authToken) {
+    console.warn('[Socket] Token yok, socket bağlantısı başlatılmadı');
+    return socket;
+  }
 
   if (socket) {
+    socket.auth = { token: authToken };
+    if (socket.connected) {
+      socket.disconnect();
+    }
     socket.connect();
     return socket;
   }
@@ -47,7 +56,7 @@ export function connectSocket(): Socket {
   socket = io(BASE_URL, {
     transports: ['websocket'],
     autoConnect: true,
-    auth: { token: getToken() },
+    auth: { token: authToken },
   });
 
   socket.on('connect', () => {
