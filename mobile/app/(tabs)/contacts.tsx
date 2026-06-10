@@ -8,12 +8,17 @@ import { useRouter } from 'expo-router';
 import { clearAuth, BASE_URL, authHeaders } from '@/services/api';
 import CatchMeIcon from '@/components/CatchMeIcon';
 
+interface Contact {
+  name: string;
+  phone: string;
+  _id?: string;
+}
+
 export default function ContactsScreen() {
   const router = useRouter();
 
   // Fetched data
-  const [savedName, setSavedName] = useState('');
-  const [savedPhone, setSavedPhone] = useState('');
+  const [contacts, setContacts] = useState<Contact[]>([]);
 
   // Modal form state
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -24,10 +29,10 @@ export default function ContactsScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetchContact();
+    fetchContacts();
   }, []);
 
-  const fetchContact = async () => {
+  const fetchContacts = async () => {
     setIsLoading(true);
     try {
       const response = await fetch(`${BASE_URL}/api/auth/me`, {
@@ -36,8 +41,19 @@ export default function ContactsScreen() {
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        setSavedName(data.user?.emergencyContactName || '');
-        setSavedPhone(data.user?.emergencyContactPhone || '');
+        if (data.user?.emergencyContacts && Array.isArray(data.user.emergencyContacts)) {
+          setContacts(data.user.emergencyContacts);
+        } else {
+          // Geriye dönük uyumluluk (Fallback)
+          if (data.user?.emergencyContactName || data.user?.emergencyContactPhone) {
+            setContacts([{
+              name: data.user.emergencyContactName || '',
+              phone: data.user.emergencyContactPhone || ''
+            }]);
+          } else {
+            setContacts([]);
+          }
+        }
       } else {
         Alert.alert('Hata', 'Kişi bilgileri alınamadı.');
       }
@@ -49,8 +65,8 @@ export default function ContactsScreen() {
   };
 
   const handleOpenModal = () => {
-    setFormName(savedName);
-    setFormPhone(savedPhone);
+    setFormName('');
+    setFormPhone('');
     setIsModalVisible(true);
   };
 
@@ -58,11 +74,14 @@ export default function ContactsScreen() {
     setIsModalVisible(false);
   };
 
-  const handleSave = async () => {
+  const handleSaveContact = async () => {
     if (!formName.trim() || !formPhone.trim()) {
       Alert.alert('Uyarı', 'Lütfen isim ve telefon numarası girin.');
       return;
     }
+
+    const newContact = { name: formName.trim(), phone: formPhone.trim() };
+    const updatedContacts = [...contacts, newContact];
 
     setIsSaving(true);
     try {
@@ -70,24 +89,63 @@ export default function ContactsScreen() {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
-          emergencyContactName: formName,
-          emergencyContactPhone: formPhone,
+          emergencyContacts: updatedContacts,
         }),
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        Alert.alert('Başarılı', 'Acil durum kişisi başarıyla güncellendi.');
-        setSavedName(formName);
-        setSavedPhone(formPhone);
+        Alert.alert('Başarılı', 'Acil durum kişisi eklendi.');
+        if (data.user?.emergencyContacts) {
+          setContacts(data.user.emergencyContacts);
+        } else {
+          setContacts(updatedContacts);
+        }
         setIsModalVisible(false);
       } else {
-        Alert.alert('Hata', data.message || 'Kişi güncellenemedi.');
+        Alert.alert('Hata', data.message || 'Kişi eklenemedi.');
       }
     } catch (error) {
       Alert.alert('Bağlantı Hatası', 'Kayıt sırasında bir sorun oluştu.');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleDeleteContact = (indexToRemove: number) => {
+    Alert.alert('Kişiyi Sil', 'Bu acil durum kişisini silmek istediğinize emin misiniz?', [
+      { text: 'İptal', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          const updatedContacts = contacts.filter((_, index) => index !== indexToRemove);
+          setIsSaving(true);
+          try {
+            const response = await fetch(`${BASE_URL}/api/auth/me`, {
+              method: 'PATCH',
+              headers: authHeaders(),
+              body: JSON.stringify({
+                emergencyContacts: updatedContacts,
+              }),
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+              if (data.user?.emergencyContacts) {
+                setContacts(data.user.emergencyContacts);
+              } else {
+                setContacts(updatedContacts);
+              }
+            } else {
+              Alert.alert('Hata', data.message || 'Kişi silinemedi.');
+            }
+          } catch (error) {
+            Alert.alert('Bağlantı Hatası', 'Silme işlemi başarısız oldu.');
+          } finally {
+            setIsSaving(false);
+          }
+        }
+      }
+    ]);
   };
 
   const handleLogout = () => {
@@ -100,9 +158,6 @@ export default function ContactsScreen() {
       ],
     );
   };
-
-  const hasContact = savedName.trim() !== '' || savedPhone.trim() !== '';
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Üst Bar */}
@@ -120,42 +175,56 @@ export default function ContactsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Başlık */}
+        {/* Başlık ve Ekle Butonu */}
         <View style={styles.titleSection}>
-          <Text style={styles.pageTitle}>Acil Durum Kişisi</Text>
-          <Text style={styles.pageSub}>Alarm durumunda aranacak kişiyi belirleyin.</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pageTitle}>Acil Durum Kişileri</Text>
+            <Text style={styles.pageSub}>Alarm durumunda aranacak listesi.</Text>
+          </View>
+          <TouchableOpacity style={styles.addIconBtn} onPress={handleOpenModal}>
+            <MaterialIcons name="person-add" size={24} color="#0040a1" />
+          </TouchableOpacity>
         </View>
 
-        {/* Kişi Kartı / Boş Durum */}
+        {/* Kişi Listesi / Boş Durum */}
         {isLoading ? (
-          <ActivityIndicator size="large" color="#0040a1" style={{ marginTop: 40 }} />
-        ) : hasContact ? (
-          <View style={[styles.contactCard, { borderLeftColor: '#0040a1' }]}>
-            <View style={styles.cardLeft}>
-              <View style={styles.iconBgBlue}>
-                <MaterialIcons name="person" size={28} color="#0040a1" />
+          <ActivityIndicator size="large" color="#0040a1" style={{ marginTop: 40, marginBottom: 40 }} />
+        ) : contacts.length > 0 ? (
+          <View style={styles.listContainer}>
+            {contacts.map((contact, index) => (
+              <View key={contact._id || index.toString()} style={[styles.contactCard, { borderLeftColor: '#0040a1' }]}>
+                <View style={styles.contactCardLeft}>
+                  <View style={styles.iconBgBlue}>
+                    <MaterialIcons name="person" size={28} color="#0040a1" />
+                  </View>
+                  <View style={styles.contactInfo}>
+                    <Text style={styles.contactName} numberOfLines={1}>{contact.name}</Text>
+                    <Text style={styles.contactRole} numberOfLines={1}>{contact.phone}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteContact(index)}>
+                  <MaterialIcons name="delete-outline" size={24} color="#bb0112" />
+                </TouchableOpacity>
               </View>
-              <View>
-                <Text style={styles.contactName}>{savedName}</Text>
-                <Text style={styles.contactRole}>{savedPhone}</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.editBtn} onPress={handleOpenModal}>
-              <MaterialIcons name="edit" size={20} color="#0040a1" />
+            ))}
+            
+            <TouchableOpacity style={styles.addFullBtn} onPress={handleOpenModal}>
+              <MaterialIcons name="add" size={24} color="#0040a1" />
+              <Text style={styles.addFullBtnText}>Yeni Kişi Ekle</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.emptyState}>
             <View style={styles.emptyIconCircle}>
-              <MaterialIcons name="person-off" size={48} color="#737785" />
+              <MaterialIcons name="group-off" size={48} color="#737785" />
             </View>
-            <Text style={styles.emptyTitle}>Henüz acil kişi eklenmedi</Text>
+            <Text style={styles.emptyTitle}>Henüz kimse eklenmedi</Text>
             <Text style={styles.emptyDesc}>
-              Düşme tespiti sırasında uyarılacak kişiyi eklemek için düğmeye basın.
+              Düşme tespiti sırasında uyarılacak kişileri listeye ekleyebilirsiniz.
             </Text>
             <TouchableOpacity style={styles.emptyAddBtn} onPress={handleOpenModal}>
               <MaterialIcons name="add-circle-outline" size={20} color="#0040a1" />
-              <Text style={styles.emptyAddBtnText}>Kişi Ekle</Text>
+              <Text style={styles.emptyAddBtnText}>İlk Kişiyi Ekle</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -182,7 +251,7 @@ export default function ContactsScreen() {
           <View style={styles.infoTextContainer}>
             <Text style={styles.infoTitle}>Otomatik Uyarı</Text>
             <Text style={styles.infoDesc}>
-              Düşme tespit edildiğinde, ilk olarak burada tanımladığınız kişi aranacaktır.
+              Düşme tespit edildiğinde, sistem listedeki kişileri sırasıyla bilgilendirmeye çalışacaktır.
             </Text>
           </View>
         </View>
@@ -197,7 +266,7 @@ export default function ContactsScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{hasContact ? 'Kişiyi Düzenle' : 'Kişi Ekle'}</Text>
+            <Text style={styles.modalTitle}>Yeni Kişi Ekle</Text>
             
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Ad Soyad</Text>
@@ -207,6 +276,7 @@ export default function ContactsScreen() {
                 value={formName}
                 onChangeText={setFormName}
                 placeholderTextColor="#737785"
+                autoCapitalize="words"
               />
             </View>
 
@@ -233,7 +303,7 @@ export default function ContactsScreen() {
               
               <TouchableOpacity
                 style={[styles.modalSaveBtn, isSaving && { opacity: 0.7 }]}
-                onPress={handleSave}
+                onPress={handleSaveContact}
                 disabled={isSaving}
               >
                 {isSaving ? (
@@ -246,6 +316,16 @@ export default function ContactsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Global Yükleme Katmanı (Silme vs işlemleri için) */}
+      {isSaving && !isModalVisible && (
+        <View style={styles.globalLoading}>
+          <View style={styles.globalLoadingBox}>
+            <ActivityIndicator size="large" color="#0040a1" />
+            <Text style={{ marginTop: 12, color: '#191c1e', fontWeight: '600' }}>İşleniyor...</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -263,19 +343,37 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 110 : 90,
   },
-  titleSection: { marginBottom: 24 },
+  titleSection: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    marginBottom: 24 
+  },
   pageTitle: { fontSize: 28, fontWeight: 'bold', color: '#191c1e' },
-  pageSub: { fontSize: 16, color: '#424654', marginTop: 4, marginBottom: 16 },
+  pageSub: { fontSize: 16, color: '#424654', marginTop: 4 },
+  addIconBtn: {
+    backgroundColor: '#dae2ff', padding: 12, borderRadius: 24,
+    justifyContent: 'center', alignItems: 'center',
+  },
 
+  listContainer: { marginBottom: 24 },
   contactCard: {
     backgroundColor: 'white', borderRadius: 16, padding: 16,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 24, borderLeftWidth: 6, elevation: 1,
+    marginBottom: 12, borderLeftWidth: 6, elevation: 1,
   },
-  iconBgBlue: { backgroundColor: '#dae2ff', padding: 12, borderRadius: 24 },
+  contactCardLeft: {
+    flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12,
+  },
+  contactInfo: { flex: 1 },
+  iconBgBlue: { backgroundColor: '#dae2ff', padding: 12, borderRadius: 24, marginRight: 12 },
   contactName: { fontSize: 18, fontWeight: 'bold', color: '#191c1e' },
-  contactRole: { fontSize: 14, color: '#424654' },
-  editBtn: { backgroundColor: '#f2f4f6', padding: 12, borderRadius: 20 },
+  contactRole: { fontSize: 14, color: '#424654', marginTop: 2 },
+  deleteBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
+  addFullBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: 16, borderStyle: 'dashed', borderWidth: 2, borderColor: '#c3c6d6',
+    borderRadius: 16, marginTop: 8, gap: 8, backgroundColor: '#f7f9fb',
+  },
+  addFullBtnText: { fontSize: 16, fontWeight: '600', color: '#0040a1' },
 
   emptyState: {
     alignItems: 'center', paddingVertical: 32,
@@ -347,4 +445,14 @@ const styles = StyleSheet.create({
     borderRadius: 12, justifyContent: 'center', alignItems: 'center', minWidth: 100,
   },
   modalSaveBtnText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
+  
+  globalLoading: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center',
+    zIndex: 999,
+  },
+  globalLoadingBox: {
+    backgroundColor: 'white', padding: 24, borderRadius: 16,
+    alignItems: 'center', elevation: 10,
+  }
 });
