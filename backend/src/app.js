@@ -6,6 +6,7 @@ const sensorDataRoutes = require("./routes/sensorData.routes");
 const authRoutes = require("./routes/auth.routes");
 const alarmRoutes = require("./routes/alarm.routes");
 const adminRoutes = require("./routes/admin.routes");
+const emergencyContactRoutes = require("./routes/emergencyContact.routes");
 
 const app = express();
 const allowedOrigins = process.env.CORS_ORIGIN
@@ -29,6 +30,7 @@ app.use("/api/sensor-data", sensorDataRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/alarms", alarmRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/emergency-contacts", emergencyContactRoutes);
 
 app.get("/", (req, res) => {
   res.json({
