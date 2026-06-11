@@ -56,7 +56,3 @@ Sağlık kontrolü endpoint'i.
   "detectionMethod": "ai-model"
 }
 ```
-
-## AI geliştirici nereden başlamalı?
-
-İlk adım olarak [`services/predictor.py`](services/predictor.py) dosyasındaki `predict` fonksiyonunu gerçek model çıkarımı yapacak şekilde doldur. Model dosyalarını `models/` altına koy ve dönüş sözleşmesini (`isFallDetected`, `fallScore`, `confidence`, `detectionMethod`) koru.

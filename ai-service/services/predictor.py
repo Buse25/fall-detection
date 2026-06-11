@@ -16,10 +16,8 @@ except Exception as _e:
     print(f"[Predictor] UYARI — model yüklenemedi: {_e}")
 
 _SAFE_DEFAULT = {
-    "isFallDetected": False,
-    "fallScore": 0.0,
-    "confidence": 0.0,
-    "detectionMethod": "ai-model",
+    "prediction": 0,
+    "probability": 0.0,
 }
 
 
@@ -48,13 +46,14 @@ def _smv_series(readings: list, sensor_key: str, scale: float = 1.0) -> list[flo
 def predict(payload: dict) -> dict:
     """
     Node.js'ten gelen sensör penceresi payload'ı üzerinde düşme tahmini yapar.
+    Tamamen stateless — threshold, state ve history bu fonksiyonda YOKTUR.
 
     Beklenen payload anahtarları:
       - readings: list[dict]  — accelerometer + gyroscope x/y/z içeren okuma listesi
       - profile: str | None   — "yasli" ise Yas_Grubu = 1, aksi hâlde 0
 
-    Döndürülen sözleşme:
-      { isFallDetected, fallScore (= Acc_Max), confidence, detectionMethod }
+    Döndürülen sözleşme (raw):
+      { prediction: int (0|1), probability: float (0-1) }
     """
     if _model is None:
         return _SAFE_DEFAULT.copy()
@@ -92,13 +91,11 @@ def predict(payload: dict) -> dict:
 
         # Düşme sınıfı (1) için olasılık; model classes_ sırası 0,1 varsayılır
         fall_class_index = list(_model.classes_).index(1) if 1 in _model.classes_ else -1
-        confidence = float(proba[fall_class_index]) if fall_class_index >= 0 else float(max(proba))
+        probability = float(proba[fall_class_index]) if fall_class_index >= 0 else float(max(proba))
 
         return {
-            "isFallDetected": prediction == 1,
-            "fallScore": acc_max,
-            "confidence": confidence,
-            "detectionMethod": "ai-model",
+            "prediction": prediction,
+            "probability": probability,
         }
 
     except Exception as exc:
