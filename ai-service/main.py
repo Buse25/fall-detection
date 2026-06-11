@@ -1,9 +1,9 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from services.predictor import predict
+from services.predictor import is_model_loaded, predict
 
 
 class Axis3D(BaseModel):
@@ -25,6 +25,8 @@ class SensorWindowPayload(BaseModel):
     windowEnd: str
     sampleRateHz: float
     readings: List[SensorReading]
+    # Backend tarafından eklenir; mobil app göndermez
+    profile: Optional[str] = None
 
 
 class PredictResponse(BaseModel):
@@ -34,12 +36,17 @@ class PredictResponse(BaseModel):
     detectionMethod: str
 
 
-app = FastAPI(title="CatchMe AI Service", version="0.1.0")
+app = FastAPI(title="CatchMe AI Service", version="1.0.0")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "catchme-ai-service"}
+    model_loaded = is_model_loaded()
+    return {
+        "status": "ok" if model_loaded else "degraded",
+        "service": "catchme-ai-service",
+        "modelLoaded": model_loaded,
+    }
 
 
 @app.post("/predict", response_model=PredictResponse)

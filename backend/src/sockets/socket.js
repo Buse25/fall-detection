@@ -1,9 +1,15 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 const SensorData = require("../models/SensorData");
 const Alarm = require("../models/Alarm");
 const { detectFallRuleBased, normalizeAiResult } = require("../analysis/fallDetection");
 const { predictFall } = require("../services/aiService");
+
+/** User.profileType → AI servisinin beklediği profil string'ine dönüştürür. */
+function mapProfileType(profileType) {
+    return profileType === "elderly" ? "yasli" : (profileType || "other");
+}
 
 /**
  * Socket.io sunucusunu HTTP server üzerinde başlatır.
@@ -18,7 +24,7 @@ function initSocket(httpServer) {
         },
     });
 
-    io.use((socket, next) => {
+    io.use(async (socket, next) => {
         try {
             const authToken = socket.handshake?.auth?.token;
             if (!authToken) {
@@ -29,16 +35,18 @@ function initSocket(httpServer) {
                 ? authToken.slice(7)
                 : authToken;
 
-            const decoded = jwt.verify(
-                token,
-                process.env.JWT_SECRET
-            );
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             if (!decoded?.id) {
                 return next(new Error("Invalid token payload"));
             }
 
             socket.userId = decoded.id.toString();
+
+            // Kullanıcı profilini bağlantı kurulurken bir kez çek; her pencerede DB sorgusu yapılmaz.
+            const user = await User.findById(socket.userId).select("profileType").lean();
+            socket.userProfile = mapProfileType(user?.profileType);
+
             return next();
         } catch (error) {
             return next(new Error("Authentication failed"));
@@ -75,7 +83,8 @@ function initSocket(httpServer) {
                 const gz = Number(gyro.z) || 0;
                 const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
 
-                const aiRawResult = await predictFall(data);
+                const aiRawResult = await predictFall(data, socket.userProfile);
+                console.log("[AI Tahmini]", aiRawResult);
                 const detection = aiRawResult
                     ? normalizeAiResult(aiRawResult)
                     : detectFallRuleBased(lastReading);

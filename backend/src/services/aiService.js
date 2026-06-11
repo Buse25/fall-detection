@@ -1,43 +1,36 @@
-const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+const axios = require("axios");
+
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
 
 /**
- * AI servisinden düşme tahmini ister.
- * Şimdilik servis hazır olmadığı için her zaman null döner.
+ * AI mikroservisinden düşme tahmini ister.
  *
- * @param {Object} sensorWindowPayload
- * @returns {Promise<Object|null>}
+ * @param {Object} sensorWindow  - Mobil uygulamadan gelen sensör penceresi payload'ı
+ * @param {string|null} userProfile - Kullanıcı profil tipi (örn: "yasli", "other")
+ * @returns {Promise<{isFallDetected: boolean, fallScore: number, confidence: number, detectionMethod: string}|null>}
+ *   Servis 3 saniye içinde yanıt vermezse veya hata olursa null döner (kural tabanlı fallback'e geçilir).
  */
-const predictFall = async (sensorWindowPayload) => {
-    // AI servisi hazır olduğunda aşağıdaki çağrı aktif edilecektir:
-    //
-    // try {
-    //     const controller = new AbortController();
-    //     const timeoutId = setTimeout(() => controller.abort(), 3000);
-    //
-    //     const response = await fetch(`${AI_SERVICE_URL}/predict`, {
-    //         method: "POST",
-    //         headers: { "Content-Type": "application/json" },
-    //         body: JSON.stringify(sensorWindowPayload),
-    //         signal: controller.signal,
-    //     });
-    //
-    //     clearTimeout(timeoutId);
-    //
-    //     if (!response.ok) {
-    //         return null;
-    //     }
-    //
-    //     const data = await response.json();
-    //     return data;
-    // } catch (error) {
-    //     return null;
-    // }
+const predictFall = async (sensorWindow, userProfile = null) => {
+    try {
+        const payload = userProfile
+            ? { ...sensorWindow, profile: userProfile }
+            : sensorWindow;
 
-    void sensorWindowPayload;
-    void AI_SERVICE_URL;
-    return null;
+        const response = await axios.post(`${AI_SERVICE_URL}/predict`, payload, {
+            timeout: 3000,
+            headers: { "Content-Type": "application/json" },
+        });
+
+        return response.data;
+    } catch (error) {
+        if (axios.isAxiosError(error)) {
+            const reason = error.code === "ECONNABORTED" ? "timeout (3s)" : error.message;
+            console.warn(`[AiService] AI servisine ulaşılamadı (${reason}); kural tabanlı fallback aktif.`);
+        } else {
+            console.warn("[AiService] Beklenmeyen hata:", error?.message);
+        }
+        return null;
+    }
 };
 
-module.exports = {
-    predictFall,
-};
+module.exports = { predictFall };
