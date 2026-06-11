@@ -16,6 +16,8 @@ import { useState, useEffect, useCallback } from "react";
 import PageLayout from "../components/layout/PageLayout";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 import { fetchDevices } from "../api/panel";
+import { getSocket, connectSocket } from "../socket/socket";
+import { useAuth } from "../context/AuthContext";
 
 
 
@@ -38,6 +40,8 @@ function isOnline(dateStr) {
 const PAGE_SIZE = 10;
 
 export default function DevicesPage() {
+  const { token } = useAuth();
+
   const [devices, setDevices]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
@@ -58,6 +62,39 @@ export default function DevicesPage() {
   useEffect(() => {
     loadDevices();
   }, [loadDevices]);
+
+  // ── Socket: device_status → cihaz listesini canlı güncelle ───────────────
+  useEffect(() => {
+    if (!token) return;
+
+    let socket = getSocket();
+    if (!socket?.connected) {
+      socket = connectSocket(token);
+    }
+
+    function onDeviceStatus(payload) {
+      setDevices((prev) => {
+        const idx = prev.findIndex((d) => d.deviceId === payload.deviceId);
+        const updatedFields = {
+          deviceId:  payload.deviceId,
+          magnitude: payload.magnitude,
+          lastSeen:  payload.timestamp,
+          isOnline:  true,
+        };
+        if (idx >= 0) {
+          // Mevcut cihazı güncelle — fallCount korunur
+          const next = [...prev];
+          next[idx] = { ...prev[idx], ...updatedFields };
+          return next;
+        }
+        // Yeni cihaz: listeye başa ekle
+        return [{ ...updatedFields, fallCount: 0 }, ...prev];
+      });
+    }
+
+    socket?.on("device_status", onDeviceStatus);
+    return () => { socket?.off("device_status", onDeviceStatus); };
+  }, [token]);
 
   const filtered = devices.filter((d) =>
     d.deviceId.toLowerCase().includes(search.toLowerCase())

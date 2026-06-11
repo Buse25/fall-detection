@@ -15,25 +15,41 @@ interface SleepSchedule {
   nightEnd:   string; // HH:mm
 }
 
+// Backend enum: "elderly" | "worker" | "athlete" | "other"
+// Mobilde sadece "elderly" (Yaşlı) ve "other" (Genç/Aktif) sunulur.
+type ProfileType = 'elderly' | 'other';
+
 interface UserProfile {
   id: string;
   name: string;
   email: string;
+  profileType?: string;
+  emergencyContactName?:  string;
+  emergencyContactPhone?: string;
   sleepSchedule?: SleepSchedule;
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
 
+  // ── Profil verisi ────────────────────────────────────────────────────────
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [name, setName] = useState('');
-  const [profileType, setProfileType] = useState('elderly');
-  const [emergencyContactName, setEmergencyContactName] = useState('');
+  // backend 'worker'/'athlete' gibi başka tipler de döndürebilir; mobilde 'other' olarak göster
+  const [profileType, setProfileType] = useState<ProfileType>('other');
+  const [emergencyContactName,  setEmergencyContactName]  = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [nightStart, setNightStart] = useState('23:00');
   const [nightEnd,   setNightEnd]   = useState('07:00');
+
+  // ── Şifre değiştirme ─────────────────────────────────────────────────────
+  const [currentPassword,    setCurrentPassword]    = useState('');
+  const [newPassword,        setNewPassword]        = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  // ── UI state ─────────────────────────────────────────────────────────────
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSaving,  setIsSaving]  = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -55,11 +71,15 @@ export default function ProfileScreen() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        setProfile(data.user);
-        setName(data.user.name || '');
-        setProfileType(data.user.profileType || 'elderly');
-        setNightStart(data.user.sleepSchedule?.nightStart || '23:00');
-        setNightEnd(data.user.sleepSchedule?.nightEnd   || '07:00');
+        const u = data.user;
+        setProfile(u);
+        setName(u.name || '');
+        // backend 'worker'/'athlete' gibi değerler döndürebilir → 'other' olarak normalize et
+        setProfileType(u.profileType === 'elderly' ? 'elderly' : 'other');
+        setEmergencyContactName(u.emergencyContactName   || '');
+        setEmergencyContactPhone(u.emergencyContactPhone || '');
+        setNightStart(u.sleepSchedule?.nightStart || '23:00');
+        setNightEnd(u.sleepSchedule?.nightEnd     || '07:00');
       } else if (response.status === 401) {
         Alert.alert('Oturum Süresi Doldu', 'Lütfen tekrar giriş yapın.', [
           { text: 'Giriş Yap', onPress: () => { clearAuth(); router.replace('/'); } },
@@ -81,6 +101,7 @@ export default function ProfileScreen() {
   const HH_MM_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
   const handleSave = async () => {
+    // ── İstemci tarafı doğrulama ───────────────────────────────────────────
     if (name.trim() === '') {
       Alert.alert('Hata', 'Ad Soyad alanı boş bırakılamaz.');
       return;
@@ -91,20 +112,43 @@ export default function ProfileScreen() {
       return;
     }
 
+    // Şifre alanlarından herhangi biri doluysa üçü de gerekli
+    const wantsPasswordChange = currentPassword !== '' || newPassword !== '';
+    if (wantsPasswordChange) {
+      if (!currentPassword) {
+        Alert.alert('Hata', 'Şifre değiştirmek için mevcut şifrenizi girin.');
+        return;
+      }
+      if (newPassword.length < 6) {
+        Alert.alert('Hata', 'Yeni şifre en az 6 karakter olmalıdır.');
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        Alert.alert('Hata', 'Yeni şifreler eşleşmiyor.');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+      // Şifre alanlarını yalnızca kullanıcı doldurduysa payload'a ekle
+      const passwordFields = wantsPasswordChange
+        ? { currentPassword, password: newPassword }
+        : {};
+
       const response = await fetch(`${BASE_URL}/api/auth/me`, {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
-          name: name.trim(),
+          name:                  name.trim(),
           profileType,
-          emergencyContactName: emergencyContactName.trim(),
+          emergencyContactName:  emergencyContactName.trim(),
           emergencyContactPhone: emergencyContactPhone.trim(),
           sleepSchedule: { nightStart: nightStart.trim(), nightEnd: nightEnd.trim() },
+          ...passwordFields,
         }),
         signal: controller.signal,
       });
@@ -113,13 +157,23 @@ export default function ProfileScreen() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        Alert.alert('Başarılı', 'Profiliniz güncellendi.');
-        if (data.user) {
-          setProfile(data.user);
-          setName(data.user.name || '');
-          setProfileType(data.user.profileType || 'elderly');
-        setNightStart(data.user.sleepSchedule?.nightStart || '23:00');
-        setNightEnd(data.user.sleepSchedule?.nightEnd   || '07:00');
+        const u = data.user;
+        setProfile(u);
+        setName(u.name || '');
+        setProfileType(u.profileType === 'elderly' ? 'elderly' : 'other');
+        setEmergencyContactName(u.emergencyContactName   || '');
+        setEmergencyContactPhone(u.emergencyContactPhone || '');
+        setNightStart(u.sleepSchedule?.nightStart || '23:00');
+        setNightEnd(u.sleepSchedule?.nightEnd     || '07:00');
+
+        // Şifre alanlarını başarı sonrası temizle
+        if (wantsPasswordChange) {
+          setCurrentPassword('');
+          setNewPassword('');
+          setConfirmNewPassword('');
+          Alert.alert('Başarılı', 'Profil ve şifre başarıyla güncellendi.');
+        } else {
+          Alert.alert('Başarılı', 'Profiliniz güncellendi.');
         }
       } else {
         Alert.alert(
@@ -254,10 +308,10 @@ export default function ProfileScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.profileCard, profileType === 'active' && styles.profileCardActive]}
-                onPress={() => setProfileType('active')}
+                style={[styles.profileCard, profileType === 'other' && styles.profileCardActive]}
+                onPress={() => setProfileType('other')}
               >
-                {profileType === 'active' && (
+                {profileType === 'other' && (
                   <MaterialIcons name="check-circle" size={20} color="#0040a1" style={styles.checkIcon} />
                 )}
                 <View style={styles.iconCircle}>
@@ -341,6 +395,73 @@ export default function ProfileScreen() {
                 />
               </View>
               <Text style={styles.inputHint}>HH:mm formatında girin (örn: 07:00)</Text>
+            </View>
+          </View>
+
+          {/* ---- Şifre Değiştirme ---- */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Şifre Değiştir</Text>
+            <Text style={styles.sectionSub}>
+              Değiştirmek istemiyorsanız bu alanları boş bırakın.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Mevcut Şifre</Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons name="lock-outline" size={20} color="#424654" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#aab0bb"
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Yeni Şifre</Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons name="lock" size={20} color="#424654" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="En az 6 karakter"
+                  placeholderTextColor="#aab0bb"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Yeni Şifre Tekrar</Text>
+              <View style={[
+                styles.inputContainer,
+                confirmNewPassword.length > 0 && newPassword !== confirmNewPassword
+                  ? styles.inputError
+                  : null,
+              ]}>
+                <MaterialIcons name="lock" size={20} color="#424654" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Şifreyi tekrar girin"
+                  placeholderTextColor="#aab0bb"
+                  value={confirmNewPassword}
+                  onChangeText={setConfirmNewPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+              {confirmNewPassword.length > 0 && newPassword !== confirmNewPassword && (
+                <Text style={styles.inputErrorText}>Şifreler eşleşmiyor</Text>
+              )}
             </View>
           </View>
 
@@ -439,4 +560,6 @@ const styles = StyleSheet.create({
     padding: 16, borderRadius: 12, gap: 10, alignItems: 'flex-start',
   },
   infoText: { flex: 1, fontSize: 13, color: '#424654', lineHeight: 20 },
+  inputError: { borderColor: '#bb0112', backgroundColor: '#fff8f7' },
+  inputErrorText: { fontSize: 12, color: '#bb0112', marginTop: 4 },
 });

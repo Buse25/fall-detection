@@ -67,11 +67,12 @@ function initSocket(httpServer) {
 
             socket.userId = decoded.id.toString();
 
-            // Kullanıcı profilini ve uyku takviminini bağlantı başına bir kez çek.
+            // Kullanıcı profilini, uyku takvimini ve rolünü bağlantı başına bir kez çek.
             // Her sensor_window'da DB sorgusu yapılmaz; socket nesnesinde cache'lenir.
-            const user = await User.findById(socket.userId).select("profileType sleepSchedule").lean();
+            const user = await User.findById(socket.userId).select("profileType sleepSchedule role").lean();
             socket.userProfile   = mapProfileType(user?.profileType);
             socket.sleepSchedule = user?.sleepSchedule || { nightStart: "23:00", nightEnd: "07:00" };
+            socket.userRole      = user?.role || "user";
 
             return next();
         } catch (error) {
@@ -84,8 +85,19 @@ function initSocket(httpServer) {
         socket.join(userRoom);
         // lastDeviceId: sensor_window handler'ında set edilir; inactivity_cancel handler'ında kullanılır.
         socket.lastDeviceId = null;
-        console.log(`[Socket] Bağlandı: ${socket.id} (room: ${userRoom})`);
 
+        // Admin kullanıcılar her yeni bağlantıda (sayfa yenileme dahil) otomatik olarak
+        // panel odasına alınır. Bu sayede web panelinin join_panel_room emit etmesini
+        // beklemeye gerek kalmaz; reconnect sonrası panel eventi kaybı önlenir.
+        if (socket.userRole === "admin") {
+            const panelRoom = `panel:${socket.userId}`;
+            socket.join(panelRoom);
+            console.log(`[Socket] Bağlandı (admin auto-join): ${socket.id} | rooms: ${userRoom}, ${panelRoom}`);
+        } else {
+            console.log(`[Socket] Bağlandı: ${socket.id} (room: ${userRoom})`);
+        }
+
+        // join_panel_room: web panel tarafından açık join için hâlâ desteklenir.
         socket.on("join_panel_room", () => {
             const panelRoom = `panel:${socket.userId}`;
             socket.join(panelRoom);
@@ -141,6 +153,16 @@ function initSocket(httpServer) {
                 const gy = Number(gyro.y)  || 0;
                 const gz = Number(gyro.z)  || 0;
                 const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+
+                // ── 0. Panel: cihaz durumu anlık güncellemesi ─────────────────
+                // Küçük, bloklamayan payload. Panel cihaz listesini (online/offline,
+                // magnitude) canlı güncellemek için kullanır.
+                // Erken return'lerden bağımsız olarak her pencerede fırlatılır.
+                io.to(`panel:${socket.userId}`).emit("device_status", {
+                    deviceId,
+                    magnitude: parseFloat(magnitude.toFixed(3)),
+                    timestamp: data?.windowEnd || new Date().toISOString(),
+                });
 
                 // ── 1. AI Tahmini ─────────────────────────────────────────────
                 const aiRawResult = await predictFall(data, socket.userProfile);

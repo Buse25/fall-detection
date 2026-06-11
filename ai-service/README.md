@@ -8,6 +8,9 @@ Bu servis, backend'den gelen sensör pencereleri (`sensor_window`) için düşme
 uvicorn main:app --reload
 ```
 
+ya da  
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
 ## API
 
 ### `GET /health`

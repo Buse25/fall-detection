@@ -147,6 +147,40 @@ const updateMe = async (req, res) => {
             updateData.sleepSchedule = { nightStart, nightEnd };
         }
 
+        // ── Parola değişimi ───────────────────────────────────────────────────
+        // Hem currentPassword hem de password (yeni) sağlanmalıdır.
+        if (req.body.password !== undefined) {
+            const { currentPassword, password: newPassword } = req.body;
+
+            if (!currentPassword) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Mevcut parolanızı (currentPassword) girmelisiniz.",
+                });
+            }
+
+            if (!newPassword || newPassword.length < 6) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Yeni parola en az 6 karakter olmalıdır.",
+                });
+            }
+
+            // Mevcut parolayı doğrula — auth middleware -password ile çektiğinden
+            // hash karşılaştırması için şifreli alanı ayrıca sorguluyoruz.
+            const userWithPassword = await User.findById(req.user._id).select("password");
+            const isMatch = await bcrypt.compare(currentPassword, userWithPassword.password);
+
+            if (!isMatch) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Mevcut parola hatalı.",
+                });
+            }
+
+            updateData.password = await bcrypt.hash(newPassword, 10);
+        }
+
         const updatedUser = await User.findByIdAndUpdate(
             req.user._id,
             updateData,

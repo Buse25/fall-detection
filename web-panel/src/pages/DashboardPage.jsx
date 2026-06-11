@@ -10,7 +10,7 @@
  *   EMIT → join_panel_room
  *   ON   → fall_detected → FallAlert toast + alarm listesine ekle
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import PageLayout from "../components/layout/PageLayout";
 import StatCard from "../components/ui/StatCard";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
@@ -33,6 +33,14 @@ export default function DashboardPage() {
   const [selectedDevice, setSelectedDevice] = useState("");
   const [loading, setLoading]       = useState(true);
   const [fallAlert, setFallAlert]   = useState(null); // anlık socket bildirimi
+
+  // device_status listener'ının closure'ında güncel selectedDevice'ı okumak için ref.
+  // selectedDevice state'i değişince socket listener'ını yeniden bağlamadan filtre güncellenir.
+  const selectedDeviceRef = useRef(selectedDevice);
+  useEffect(() => { selectedDeviceRef.current = selectedDevice; }, [selectedDevice]);
+
+  // Canlı grafik için maksimum nokta sayısı: 300 (~1 dk veri, 5 pencere/sn'de)
+  const MAX_LIVE_POINTS = 300;
 
   // ── Veri yükleme ──────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -74,15 +82,14 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!token) return;
 
-    // Bağlantı yoksa kur
     let socket = getSocket();
     if (!socket?.connected) {
       socket = connectSocket(token);
     }
 
+    // fall_detected: Yeni düşme alarmı — toast göster, stats ve liste güncelle
     function onFallDetected(payload) {
       setFallAlert(payload);
-      // İstatistikleri güncelle
       setStats((prev) =>
         prev
           ? {
@@ -93,7 +100,6 @@ export default function DashboardPage() {
             }
           : prev
       );
-      // En son alarmı listeye ekle (geçici, tam veri yüklenene kadar)
       setAlarms((prev) => [
         {
           _id: payload.alarmId,
@@ -103,15 +109,86 @@ export default function DashboardPage() {
           isResolved: false,
           createdAt: new Date().toISOString(),
         },
-        ...prev.slice(0, 9), // maksimum 10 kayıt
+        ...prev.slice(0, 9),
       ]);
     }
 
-    socket?.on("fall_detected", onFallDetected);
+    // alarm_resolved: Mobil "İyiyim" tuşu veya panel resolve — alarm listesini güncelle
+    function onAlarmResolved(payload) {
+      setAlarms((prev) =>
+        prev.map((a) =>
+          String(a._id) === String(payload.alarmId)
+            ? { ...a, isResolved: true, resolvedAt: new Date().toISOString() }
+            : a
+        )
+      );
+      setStats((prev) =>
+        prev
+          ? { ...prev, unresolvedAlarms: Math.max(0, (prev.unresolvedAlarms ?? 1) - 1) }
+          : prev
+      );
+    }
+
+    // emergency_alert: Hareketsizlik alarmı kesinleşti — yeni alarm satırı ekle
+    function onEmergencyAlert(payload) {
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              unresolvedAlarms: (prev.unresolvedAlarms ?? 0) + 1,
+              totalAlarms: (prev.totalAlarms ?? 0) + 1,
+            }
+          : prev
+      );
+      setAlarms((prev) => [
+        {
+          _id: payload.alarmId,
+          alarmType: "inactivity",
+          severity: "high",
+          message: "Hareketsizlik alarmı onaylandı — acil durum kişileri uyarıldı",
+          isResolved: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev.slice(0, 9),
+      ]);
+    }
+
+    // device_status: Canlı sensör penceresi — grafiği sağa doğru kaydır
+    function onDeviceStatus(payload) {
+      // selectedDevice filtresi: ref üzerinden okunur, closure yeniden bağlanmadan çalışır
+      const selDev = selectedDeviceRef.current;
+      if (selDev && payload.deviceId !== selDev) return;
+
+      // Grafiğe yeni nokta ekle — SensorChart'ın beklediği şema: { accelerometer.magnitude }
+      setChartData((prev) => {
+        const newPoint = {
+          timestamp: payload.timestamp,
+          accelerometer: { magnitude: payload.magnitude },
+          isFallDetected: false,
+          deviceId: payload.deviceId,
+        };
+        const updated = [...prev, newPoint];
+        return updated.length > MAX_LIVE_POINTS ? updated.slice(-MAX_LIVE_POINTS) : updated;
+      });
+
+      // Yeni bir cihaz görüldüyse dropdown listesine ekle
+      setDevices((prev) =>
+        prev.includes(payload.deviceId) ? prev : [...prev, payload.deviceId]
+      );
+    }
+
+    socket?.on("fall_detected",   onFallDetected);
+    socket?.on("alarm_resolved",  onAlarmResolved);
+    socket?.on("emergency_alert", onEmergencyAlert);
+    socket?.on("device_status",   onDeviceStatus);
+
     return () => {
-      socket?.off("fall_detected", onFallDetected);
+      socket?.off("fall_detected",   onFallDetected);
+      socket?.off("alarm_resolved",  onAlarmResolved);
+      socket?.off("emergency_alert", onEmergencyAlert);
+      socket?.off("device_status",   onDeviceStatus);
     };
-  }, [token]);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Alarm çözüme işaretleme ───────────────────────────────────────────────
   async function handleResolve(id) {
