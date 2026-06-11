@@ -121,7 +121,7 @@ router.get("/sensor-chart", async (req, res) => {
 
         const points = await SensorData.find(query)
             .sort({ timestamp: 1 })
-            .select("timestamp accelerometer isFallDetected deviceId");
+            .select("timestamp accelerometer gyroscope isFallDetected deviceId");
 
         return res.status(200).json({
             success: true,

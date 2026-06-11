@@ -27,7 +27,9 @@ export default function DashboardPage() {
   const [stats, setStats]           = useState(null);
   const [alarms, setAlarms]         = useState([]);
   const [chartData, setChartData]   = useState([]);
-  const [hours, setHours]           = useState(1);
+  // "live" → 60 saniyelik sliding window (socket verisi)
+  // "1h"  → API'den son 1 saat  |  "24h" → API'den son 24 saat
+  const [chartMode, setChartMode]   = useState("live");
   const [devices, setDevices]       = useState([]);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [loading, setLoading]       = useState(true);
@@ -73,9 +75,18 @@ export default function DashboardPage() {
     loadAll();
   }, [loadAll]);
 
+  // "live" modunda API çağrısı yapılmaz — grafik doğrudan socket verisiyle beslenir
+  const CHART_HOURS = { "1h": 1, "24h": 24 };
   useEffect(() => {
-    loadChart(hours, selectedDevice);
-  }, [hours, selectedDevice, loadChart]);
+    if (chartMode === "live") return;
+    loadChart(CHART_HOURS[chartMode], selectedDevice);
+  }, [chartMode, selectedDevice, loadChart]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleChartModeChange(mode) {
+    setChartMode(mode);
+    // Live moda geçişte eski geçmiş verisi temizlenir; socket stream'i taze başlar
+    if (mode === "live") setChartData([]);
+  }
 
   // ── Socket bağlantısı ve olay dinleme ─────────────────────────────────────
   useEffect(() => {
@@ -86,7 +97,7 @@ export default function DashboardPage() {
       socket = connectSocket(token);
     }
 
-    // fall_detected: Yeni düşme alarmı — toast göster, stats ve liste güncelle
+    // fall_detected: Yeni düşme alarmı — toast göster, stats/liste güncelle, grafiğe marker ekle
     function onFallDetected(payload) {
       setFallAlert(payload);
       setStats((prev) =>
@@ -110,6 +121,19 @@ export default function DashboardPage() {
         },
         ...prev.slice(0, 9),
       ]);
+      // Grafiğe düşme marker'ı ekle (son bilinen magnitude değerinde)
+      setChartData((prev) => {
+        const lastMag = prev.length > 0 ? (prev[prev.length - 1].accelerometer?.magnitude ?? 1) : 1;
+        const marker = {
+          timestamp: new Date().toISOString(),
+          accelerometer: { magnitude: lastMag },
+          isFallDetected: true,
+          isInactivity: false,
+          deviceId: "",
+        };
+        const updated = [...prev, marker];
+        return updated.length > MAX_LIVE_POINTS ? updated.slice(-MAX_LIVE_POINTS) : updated;
+      });
     }
 
     // alarm_resolved: Mobil "İyiyim" tuşu veya panel resolve — alarm listesini güncelle
@@ -128,7 +152,7 @@ export default function DashboardPage() {
       );
     }
 
-    // emergency_alert: Hareketsizlik alarmı kesinleşti — yeni alarm satırı ekle
+    // emergency_alert: Hareketsizlik onaylandı — alarm ekle, grafiğe marker koy
     function onEmergencyAlert(payload) {
       setStats((prev) =>
         prev
@@ -150,6 +174,19 @@ export default function DashboardPage() {
         },
         ...prev.slice(0, 9),
       ]);
+      // Grafiğe hareketsizlik marker'ı ekle (son bilinen magnitude değerinde)
+      setChartData((prev) => {
+        const lastMag = prev.length > 0 ? (prev[prev.length - 1].accelerometer?.magnitude ?? 0) : 0;
+        const marker = {
+          timestamp: new Date().toISOString(),
+          accelerometer: { magnitude: lastMag },
+          isFallDetected: false,
+          isInactivity: true,
+          deviceId: "",
+        };
+        const updated = [...prev, marker];
+        return updated.length > MAX_LIVE_POINTS ? updated.slice(-MAX_LIVE_POINTS) : updated;
+      });
     }
 
     // device_status: Canlı sensör penceresi — grafiği sağa doğru kaydır
@@ -158,12 +195,14 @@ export default function DashboardPage() {
       const selDev = selectedDeviceRef.current;
       if (selDev && payload.deviceId !== selDev) return;
 
-      // Grafiğe yeni nokta ekle — SensorChart'ın beklediği şema: { accelerometer.magnitude }
+      // Grafiğe yeni nokta ekle — gyroscopeMagnitude backend'den gelen pre-computed değer
       setChartData((prev) => {
         const newPoint = {
           timestamp: payload.timestamp,
           accelerometer: { magnitude: payload.magnitude },
+          gyroscopeMagnitude: payload.gyroscopeMagnitude ?? null,
           isFallDetected: false,
+          isInactivity: false,
           deviceId: payload.deviceId,
         };
         const updated = [...prev, newPoint];
@@ -241,8 +280,8 @@ export default function DashboardPage() {
             <div className="xl:col-span-2">
               <SensorChart
                 data={chartData}
-                hours={hours}
-                onHoursChange={(h) => setHours(h)}
+                chartMode={chartMode}
+                onChartModeChange={handleChartModeChange}
                 devices={devices}
                 selectedDevice={selectedDevice}
                 onDeviceChange={(dev) => setSelectedDevice(dev)}

@@ -1,15 +1,60 @@
 const Alarm = require("../models/Alarm");
 
+/**
+ * GET /api/alarms
+ *
+ * BUG FIX: Eski sürüm `{ userId: req.user._id }` filtrelemesi yapıyordu.
+ * Admin kullanıcısının kendi userId'sine ait alarm kaydı olmadığı için tablo boş görünüyordu.
+ *
+ * FIX:
+ *  - Admin rolü: filtre yok (tüm alarmlar)
+ *  - Normal kullanıcı: sadece kendi userId'si
+ *  - Desteklenen query parametreleri: alarmType, severity, isResolved, startDate, page, limit
+ */
 const getAlarms = async (req, res) => {
   try {
-    const alarms = await Alarm.find({ userId: req.user._id.toString() })
-      .populate("sensorDataId")
-      .sort({ createdAt: -1 })
-      .limit(100);
+    const isAdmin = req.user.role === "admin";
+
+    const {
+      page      = 1,
+      limit     = 10,
+      alarmType,
+      severity,
+      isResolved,
+      startDate,
+    } = req.query;
+
+    // Admin tüm alarmları görür; normal kullanıcı sadece kendi kayıtlarını görür
+    const filter = isAdmin ? {} : { userId: req.user._id.toString() };
+
+    if (alarmType) filter.alarmType = alarmType;
+    if (severity)  filter.severity  = severity;
+
+    // isResolved string olarak gelir ("true" / "false")
+    if (isResolved !== undefined && isResolved !== "") {
+      filter.isResolved = isResolved === "true";
+    }
+
+    if (startDate) {
+      // HTML date input: "YYYY-MM-DD" → UTC gece yarısını esas al
+      filter.createdAt = { $gte: new Date(startDate) };
+    }
+
+    const pageNum  = Math.max(1, parseInt(page,  10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [alarms, total] = await Promise.all([
+      Alarm.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Alarm.countDocuments(filter),
+    ]);
 
     return res.status(200).json({
       success: true,
-      count: alarms.length,
+      count: total,   // toplam kayıt sayısı (frontend pagination için)
       data: alarms,
     });
   } catch (error) {
@@ -23,10 +68,12 @@ const getAlarms = async (req, res) => {
 
 const getAlarmById = async (req, res) => {
   try {
-    const alarm = await Alarm.findOne({
-      _id: req.params.id,
-      userId: req.user._id.toString(),
-    }).populate("sensorDataId");
+    const isAdmin = req.user.role === "admin";
+    const query   = isAdmin
+      ? { _id: req.params.id }
+      : { _id: req.params.id, userId: req.user._id.toString() };
+
+    const alarm = await Alarm.findOne(query).populate("sensorDataId");
 
     if (!alarm) {
       return res.status(404).json({
@@ -50,15 +97,14 @@ const getAlarmById = async (req, res) => {
 
 const resolveAlarm = async (req, res) => {
   try {
+    const isAdmin = req.user.role === "admin";
+    const query   = isAdmin
+      ? { _id: req.params.id }
+      : { _id: req.params.id, userId: req.user._id.toString() };
+
     const alarm = await Alarm.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        userId: req.user._id.toString(),
-      },
-      {
-        isResolved: true,
-        resolvedAt: new Date(),
-      },
+      query,
+      { isResolved: true, resolvedAt: new Date() },
       { returnDocument: "after" }
     );
 

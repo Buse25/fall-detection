@@ -155,12 +155,15 @@ function initSocket(httpServer) {
                 const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
 
                 // ── 0. Panel: cihaz durumu anlık güncellemesi ─────────────────
-                // Küçük, bloklamayan payload. Panel cihaz listesini (online/offline,
-                // magnitude) canlı güncellemek için kullanır.
-                // Erken return'lerden bağımsız olarak her pencerede fırlatılır.
+                // gyroscopeMagnitude: web panelinin jiroskop grafiği için önceden hesaplanır,
+                // böylece panel {x,y,z}'yi tekrar işlemek zorunda kalmaz.
+                const gyroscopeMagnitude = parseFloat(
+                    Math.sqrt(gx * gx + gy * gy + gz * gz).toFixed(3)
+                );
                 io.to(`panel:${socket.userId}`).emit("device_status", {
                     deviceId,
                     magnitude: parseFloat(magnitude.toFixed(3)),
+                    gyroscopeMagnitude,
                     timestamp: data?.windowEnd || new Date().toISOString(),
                 });
 
