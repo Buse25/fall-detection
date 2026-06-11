@@ -18,7 +18,6 @@ import FallAlert from "../components/ui/FallAlert";
 import SensorChart from "../components/SensorChart";
 import RecentAlarms from "../components/RecentAlarms";
 import { fetchStats, fetchRecentAlarms, fetchSensorChart, fetchDevices } from "../api/panel";
-import { resolveAlarm } from "../api/alarms";
 import { getSocket, connectSocket } from "../socket/socket";
 import { useAuth } from "../context/AuthContext";
 
@@ -190,23 +189,6 @@ export default function DashboardPage() {
     };
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Alarm çözüme işaretleme ───────────────────────────────────────────────
-  async function handleResolve(id) {
-    try {
-      await resolveAlarm(id);
-      setAlarms((prev) =>
-        prev.map((a) => (a._id === id ? { ...a, isResolved: true } : a))
-      );
-      setStats((prev) =>
-        prev
-          ? { ...prev, unresolvedAlarms: Math.max(0, (prev.unresolvedAlarms ?? 1) - 1) }
-          : prev
-      );
-    } catch (err) {
-      console.error("[Dashboard] Alarm çözüme işaretlenemedi:", err.message);
-    }
-  }
-
   const unresolved = stats?.unresolvedAlarms ?? 0;
 
   return (
@@ -229,21 +211,13 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* İstatistik kartları */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-gutter mb-stack-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-gutter mb-stack-lg">
             <StatCard
               icon="notifications_active"
               label="Toplam Alarm"
               value={stats?.totalAlarms ?? 0}
               sub="Tüm zamanlar"
               subIcon="history"
-            />
-            <StatCard
-              icon="warning"
-              label="Çözülmemiş"
-              value={stats?.unresolvedAlarms ?? 0}
-              sub={stats?.unresolvedAlarms > 0 ? "Dikkat gerekiyor" : "Temiz"}
-              subIcon={stats?.unresolvedAlarms > 0 ? "warning" : "check_circle"}
-              variant={stats?.unresolvedAlarms > 0 ? "error" : "default"}
             />
             <StatCard
               icon="falling"
@@ -286,7 +260,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <RecentAlarms alarms={alarms} onResolve={handleResolve} />
+                <RecentAlarms alarms={alarms} />
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import PageLayout from "../components/layout/PageLayout";
 import AlarmBadge from "../components/AlarmBadge";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
-import { getAlarms, resolveAlarm } from "../api/alarms";
+import { getAlarms } from "../api/alarms";
 
 const ALARM_TYPE_MAP = {
   fall:       { icon: "falling",              label: "Düşme",          color: "text-error" },
@@ -22,6 +22,7 @@ const ALARM_TYPE_MAP = {
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   return new Date(dateStr).toLocaleString("tr-TR", {
+    timeZone: "Europe/Istanbul",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -32,20 +33,17 @@ function formatDate(dateStr) {
 
 const PAGE_SIZE = 10;
 
+const EMPTY_FILTERS = { alarmType: "", severity: "", isResolved: "", startDate: "" };
+
 export default function AlarmHistoryPage() {
   const [alarms, setAlarms]   = useState([]);
   const [total, setTotal]     = useState(0);
   const [page, setPage]       = useState(1);
   const [loading, setLoading] = useState(true);
-  const [resolving, setResolving] = useState(null); // id of alarm being resolved
 
   // Filtreler
-  const [filters, setFilters] = useState({
-    severity:   "",
-    isResolved: "",
-    startDate:  "",
-  });
-  const [applied, setApplied] = useState(filters);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [applied, setApplied] = useState(EMPTY_FILTERS);
 
   const loadAlarms = useCallback(async (currentPage, currentFilters) => {
     setLoading(true);
@@ -53,6 +51,7 @@ export default function AlarmHistoryPage() {
       const params = {
         page: currentPage,
         limit: PAGE_SIZE,
+        ...(currentFilters.alarmType  && { alarmType: currentFilters.alarmType }),
         ...(currentFilters.severity   && { severity: currentFilters.severity }),
         ...(currentFilters.isResolved !== "" && { isResolved: currentFilters.isResolved }),
         ...(currentFilters.startDate  && { startDate: currentFilters.startDate }),
@@ -77,24 +76,9 @@ export default function AlarmHistoryPage() {
   }
 
   function handleClearFilters() {
-    const empty = { severity: "", isResolved: "", startDate: "" };
-    setFilters(empty);
-    setApplied(empty);
+    setFilters(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
     setPage(1);
-  }
-
-  async function handleResolve(id) {
-    setResolving(id);
-    try {
-      await resolveAlarm(id);
-      setAlarms((prev) =>
-        prev.map((a) => (a._id === id ? { ...a, isResolved: true } : a))
-      );
-    } catch (err) {
-      console.error("[AlarmHistory] Çözüme işaretlenemedi:", err.message);
-    } finally {
-      setResolving(null);
-    }
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -113,7 +97,24 @@ export default function AlarmHistoryPage() {
 
       {/* Filtre Alanı */}
       <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-xl p-gutter shadow-sm mb-stack-md">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-gutter items-end">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-gutter items-end">
+          {/* Alarm Tipi */}
+          <div className="flex flex-col gap-base">
+            <label className="font-label-md text-label-md text-on-surface-variant">
+              Alarm Tipi
+            </label>
+            <select
+              value={filters.alarmType}
+              onChange={(e) => setFilters((p) => ({ ...p, alarmType: e.target.value }))}
+              className="border border-outline-variant rounded-lg px-3 py-2 text-body-sm font-body-sm focus:ring-2 focus:ring-primary outline-none bg-surface"
+            >
+              <option value="">Tümü</option>
+              <option value="fall">Düşme</option>
+              <option value="inactivity">Hareketsizlik</option>
+              <option value="battery">Düşük Batarya</option>
+            </select>
+          </div>
+
           {/* Tarih */}
           <div className="flex flex-col gap-base">
             <label className="font-label-md text-label-md text-on-surface-variant">
@@ -221,9 +222,6 @@ export default function AlarmHistoryPage() {
                   <th className="p-stack-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap">
                     Durum
                   </th>
-                  <th className="p-stack-md font-label-md text-label-md text-on-surface-variant whitespace-nowrap text-right">
-                    Aksiyon
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/40">
@@ -261,21 +259,6 @@ export default function AlarmHistoryPage() {
                           <span className="text-green-600 font-medium">Çözüldü</span>
                         ) : (
                           <span className="text-on-surface-variant">Bekliyor</span>
-                        )}
-                      </td>
-                      <td className="p-stack-md text-right">
-                        {!alarm.isResolved ? (
-                          <button
-                            onClick={() => handleResolve(alarm._id)}
-                            disabled={resolving === alarm._id}
-                            className="bg-primary text-on-primary font-label-md text-label-md px-3 py-1.5 rounded hover:bg-secondary transition-colors whitespace-nowrap disabled:opacity-60"
-                          >
-                            {resolving === alarm._id ? "..." : "Çözüldü İşaretle"}
-                          </button>
-                        ) : (
-                          <span className="text-on-surface-variant font-body-sm text-body-sm">
-                            —
-                          </span>
                         )}
                       </td>
                     </tr>

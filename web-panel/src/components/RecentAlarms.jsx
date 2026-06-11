@@ -14,6 +14,7 @@ const ALARM_TYPE_MAP = {
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   return new Date(dateStr).toLocaleString("tr-TR", {
+    timeZone: "Europe/Istanbul",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -22,7 +23,7 @@ function formatDate(dateStr) {
   });
 }
 
-export default function RecentAlarms({ alarms = [], onResolve }) {
+export default function RecentAlarms({ alarms = [] }) {
   if (alarms.length === 0) {
     return (
       <div className="py-10 text-center">
@@ -62,17 +63,9 @@ export default function RecentAlarms({ alarms = [], onResolve }) {
               </div>
             </div>
 
-            {/* Sağ: rozet + buton */}
+            {/* Sağ: rozet */}
             <div className="flex items-center gap-2 ml-3 flex-shrink-0">
               <AlarmBadge severity={alarm.severity} isResolved={alarm.isResolved} />
-              {!alarm.isResolved && onResolve && (
-                <button
-                  onClick={() => onResolve(alarm._id)}
-                  className="text-primary hover:text-secondary font-label-md text-label-md transition-colors whitespace-nowrap"
-                >
-                  Çöz
-                </button>
-              )}
             </div>
           </li>
         );

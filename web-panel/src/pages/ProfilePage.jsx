@@ -48,14 +48,8 @@ export default function ProfilePage() {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
 
-  /* Kişisel bilgi formu — tüm düzenlenebilir profil alanlarını içerir */
-  const [profileForm, setProfileForm] = useState({
-    name:                   "",
-    profileType:            "other",
-    emergencyContactName:   "",
-    emergencyContactPhone:  "",
-    sleepSchedule: { nightStart: "23:00", nightEnd: "07:00" },
-  });
+  /* Kişisel bilgi formu */
+  const [profileForm, setProfileForm] = useState({ name: "" });
   const [nameSaving, setNameSaving] = useState(false);
   const [nameMsg, setNameMsg]       = useState(null); // { type:'success'|'error', text }
 
@@ -82,16 +76,7 @@ export default function ProfilePage() {
       try {
         const data = await getMe();
         setUser(data);
-        setProfileForm({
-          name:                  data.name                  ?? "",
-          profileType:           data.profileType           ?? "other",
-          emergencyContactName:  data.emergencyContactName  ?? "",
-          emergencyContactPhone: data.emergencyContactPhone ?? "",
-          sleepSchedule: {
-            nightStart: data.sleepSchedule?.nightStart ?? "23:00",
-            nightEnd:   data.sleepSchedule?.nightEnd   ?? "07:00",
-          },
-        });
+        setProfileForm({ name: data.name ?? "" });
       } catch (err) {
         console.error("[Profile] Yüklenemedi:", err.message);
       } finally {
@@ -112,13 +97,7 @@ export default function ProfilePage() {
     setNameSaving(true);
     setNameMsg(null);
     try {
-      const updated = await updateMe({
-        name:                  profileForm.name,
-        profileType:           profileForm.profileType,
-        emergencyContactName:  profileForm.emergencyContactName,
-        emergencyContactPhone: profileForm.emergencyContactPhone,
-        sleepSchedule:         profileForm.sleepSchedule,
-      });
+      const updated = await updateMe({ name: profileForm.name });
       setUser(updated);
       setCtxUser?.((prev) => ({ ...prev, name: updated.name }));
       setNameMsg({ type: "success", text: "Bilgiler başarıyla güncellendi." });
@@ -328,138 +307,6 @@ export default function ProfilePage() {
                   <p className="font-body-sm text-body-sm text-primary text-xs">
                     E-posta adresi sistem yöneticisi tarafından değiştirilebilir.
                   </p>
-                </div>
-              </div>
-
-              {/* ─ Satır 2: Profil Tipi ──────────────────────────────── */}
-              <div className="space-y-1">
-                <label
-                  htmlFor="prof-type"
-                  className="block font-label-md text-label-md text-on-surface"
-                >
-                  Profil Tipi
-                </label>
-                <div className="relative">
-                  <select
-                    id="prof-type"
-                    value={profileForm.profileType}
-                    onChange={(e) => setProfileForm((p) => ({ ...p, profileType: e.target.value }))}
-                    className="w-full appearance-none bg-surface border border-outline-variant rounded-lg px-4 py-2 pr-10 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                  >
-                    <option value="elderly">Yaşlı</option>
-                    <option value="worker">Çalışan</option>
-                    <option value="athlete">Sporcu</option>
-                    <option value="other">Diğer</option>
-                  </select>
-                  <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-sm">
-                    expand_more
-                  </span>
-                </div>
-                <p className="font-body-sm text-body-sm text-on-surface-variant text-xs">
-                  Profil tipi, düşme eşiği ve hareketsizlik algılama davranışını etkiler.
-                </p>
-              </div>
-
-              {/* ─ Satır 3: Acil Durum Kişisi ───────────────────────── */}
-              <div>
-                <p className="font-label-md text-label-md text-on-surface mb-2 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[15px] text-on-surface-variant">
-                    emergency
-                  </span>
-                  Acil Durum Kişisi
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="emg-name"
-                      className="block font-label-md text-label-md text-on-surface-variant text-xs"
-                    >
-                      Ad Soyad
-                    </label>
-                    <input
-                      id="emg-name"
-                      type="text"
-                      placeholder="Örn: Ahmet Yılmaz"
-                      value={profileForm.emergencyContactName}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, emergencyContactName: e.target.value }))
-                      }
-                      className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-2 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="emg-phone"
-                      className="block font-label-md text-label-md text-on-surface-variant text-xs"
-                    >
-                      Telefon
-                    </label>
-                    <input
-                      id="emg-phone"
-                      type="tel"
-                      placeholder="Örn: +90 555 123 4567"
-                      value={profileForm.emergencyContactPhone}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({ ...p, emergencyContactPhone: e.target.value }))
-                      }
-                      className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-2 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ─ Satır 4: Uyku Takvimi ────────────────────────────── */}
-              <div>
-                <p className="font-label-md text-label-md text-on-surface mb-2 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[15px] text-on-surface-variant">
-                    bedtime
-                  </span>
-                  Uyku Takvimi
-                  <span className="font-body-sm text-body-sm text-on-surface-variant font-normal">
-                    — hareketsizlik eşiğini etkiler
-                  </span>
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-gutter">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="sleep-start"
-                      className="block font-label-md text-label-md text-on-surface-variant text-xs"
-                    >
-                      Uyku Başlangıcı
-                    </label>
-                    <input
-                      id="sleep-start"
-                      type="time"
-                      value={profileForm.sleepSchedule.nightStart}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({
-                          ...p,
-                          sleepSchedule: { ...p.sleepSchedule, nightStart: e.target.value },
-                        }))
-                      }
-                      className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-2 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="sleep-end"
-                      className="block font-label-md text-label-md text-on-surface-variant text-xs"
-                    >
-                      Uyku Bitişi
-                    </label>
-                    <input
-                      id="sleep-end"
-                      type="time"
-                      value={profileForm.sleepSchedule.nightEnd}
-                      onChange={(e) =>
-                        setProfileForm((p) => ({
-                          ...p,
-                          sleepSchedule: { ...p.sleepSchedule, nightEnd: e.target.value },
-                        }))
-                      }
-                      className="w-full bg-surface border border-outline-variant rounded-lg px-4 py-2 font-body-md text-body-md text-on-surface focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-shadow"
-                    />
-                  </div>
                 </div>
               </div>
 

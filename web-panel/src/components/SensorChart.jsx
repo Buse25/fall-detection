@@ -13,7 +13,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  ReferenceLine,
   Dot,
 } from "recharts";
 
@@ -22,6 +21,7 @@ const HOURS_OPTIONS = [1, 3, 6, 12, 24];
 function formatTime(ts) {
   if (!ts) return "";
   return new Date(ts).toLocaleTimeString("tr-TR", {
+    timeZone: "Europe/Istanbul",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -146,8 +146,6 @@ export default function SensorChart({
               width={40}
             />
             <Tooltip content={<CustomTooltip />} />
-            {/* Düşme eşik çizgisi */}
-            <ReferenceLine y={2.5} stroke="#ba1a1a" strokeDasharray="4 2" strokeOpacity={0.6} />
             <Line
               type="monotone"
               dataKey="magnitude"
@@ -175,9 +173,6 @@ export default function SensorChart({
         </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded-full bg-error inline-block" /> Düşme
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-4 h-px border-t-2 border-dashed border-error inline-block" /> Eşik (2.5G)
         </span>
       </div>
     </div>
