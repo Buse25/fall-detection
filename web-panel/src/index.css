@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Material Symbols font settings */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Pulse animation for active alarms */
+@keyframes pulse-ring {
+  0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(186, 26, 26, 0.7); }
+  70%  { transform: scale(1);    box-shadow: 0 0 0 10px rgba(186, 26, 26, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(186, 26, 26, 0); }
+}
+.pulse-alarm {
+  animation: pulse-ring 2s infinite;
+}
+
+/* Slide-in for fall alert toast */
+@keyframes slide-in-right {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.slide-in {
+  animation: slide-in-right 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Smooth chart tooltip */
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f3f3fe;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3c6d7;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #737686;
+}

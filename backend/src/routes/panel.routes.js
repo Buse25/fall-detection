@@ -1,11 +1,11 @@
 const express = require("express");
 const SensorData = require("../models/SensorData");
 const Alarm = require("../models/Alarm");
-const { protect } = require("../middleware/auth.middleware");
+const { protect, adminOnly } = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
-router.use(protect);
+router.use(protect, adminOnly);
 
 router.get("/stats", async (req, res) => {
   try {
@@ -74,12 +74,19 @@ router.get("/sensor-chart", async (req, res) => {
 
     const fromDate = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-    const points = await SensorData.find({
+    const deviceId = req.query.deviceId;
+
+    const query = {
       userId,
       timestamp: { $gte: fromDate },
-    })
+    };
+    if (deviceId) {
+      query.deviceId = deviceId;
+    }
+
+    const points = await SensorData.find(query)
       .sort({ timestamp: 1 })
-      .select("timestamp accelerometer isFallDetected");
+      .select("timestamp accelerometer isFallDetected deviceId");
 
     return res.status(200).json({
       success: true,
@@ -91,6 +98,49 @@ router.get("/sensor-chart", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while fetching sensor chart data",
+      error: error.message,
+    });
+  }
+});
+
+router.get("/devices", async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+    
+    // Her cihaz için en son sensör verisinin zaman damgasını, büyüklüğünü ve düşme sayısını al
+    const devicesData = await SensorData.aggregate([
+      { $match: { userId } },
+      { $sort: { timestamp: -1 } }, // Son veriyi alabilmek için önce sırala
+      { $group: { 
+          _id: "$deviceId", 
+          lastSeen: { $first: "$timestamp" },
+          magnitude: { $first: "$accelerometer.magnitude" },
+          fallCount: {
+            $sum: { $cond: [{ $eq: ["$isFallDetected", true] }, 1, 0] }
+          }
+        } 
+      },
+      { $sort: { lastSeen: -1 } }
+    ]);
+    
+    const devices = devicesData
+      .filter(d => d._id)
+      .map(d => ({
+        deviceId: d._id,
+        lastSeen: d.lastSeen,
+        magnitude: d.magnitude || 0,
+        fallCount: d.fallCount || 0,
+        isOnline: (new Date() - new Date(d.lastSeen)) < 5 * 60 * 1000 // son 5 dakika
+      }));
+
+    return res.status(200).json({
+      success: true,
+      data: devices,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching devices",
       error: error.message,
     });
   }

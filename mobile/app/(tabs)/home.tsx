@@ -113,7 +113,7 @@ export default function HomeScreen() {
       if (windowBufferRef.current.length >= WINDOW_SIZE) {
         const payload = {
           userId: userId || 'anonim_kullanici',
-          deviceId: 'mobil_cihaz_01',
+          deviceId: 'mobil_cihaz_02',
           windowStart: windowStartRef.current,
           windowEnd: now,
           sampleRateHz: SAMPLE_RATE_HZ,

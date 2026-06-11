@@ -20,35 +20,38 @@ const createSensorData = async (req, res) => {
 
     const magnitude = calculateMagnitude(accelerometer);
     const FALL_THRESHOLD = 2.5;
-const detectionMethod = "rule-based";
-    const isFallDetected = magnitude > FALL_THRESHOLD;
-    const fallScore = magnitude;
 
-const sensorData = await SensorData.create({
-  userId,
-  deviceId,
-  timestamp,
+    // Mobil cihazdan isFallDetected geldiyse onu kullan, yoksa büyüklüğe bak
+    const reqIsFall = req.body.isFallDetected === true || req.body.isFallDetected === "true";
+    const isFallDetected = reqIsFall || (magnitude > FALL_THRESHOLD);
+    
+    const fallScore = req.body.fallScore ?? magnitude;
+    const detectionMethod = req.body.detectionMethod || (reqIsFall ? "ai-model" : "rule-based");
 
-  accelerometer: {
-    ...accelerometer,
-    magnitude,
-  },
+    const sensorData = await SensorData.create({
+      userId,
+      deviceId,
+      timestamp,
+      accelerometer: {
+        ...accelerometer,
+        magnitude,
+      },
+      gyroscope,
+      isFallDetected,
+      fallScore,
+      detectionMethod,
+    });
 
-  gyroscope,
-  isFallDetected,
-  fallScore,
-});
-
-if (isFallDetected) {
-  await Alarm.create({
-    userId,
-    deviceId,
-    sensorDataId: sensorData._id,
-    alarmType: "fall",
-    severity: "high",
-    message: "Fall detected by rule-based detection",
-  });
-}
+    if (isFallDetected) {
+      await Alarm.create({
+        userId,
+        deviceId,
+        sensorDataId: sensorData._id,
+        alarmType: "fall",
+        severity: "high",
+        message: `Düşme tespit edildi (${detectionMethod})`,
+      });
+    }
 
     return res.status(201).json({
       success: true,

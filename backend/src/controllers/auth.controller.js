@@ -46,6 +46,7 @@ const register = async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
+                role: user.role,
             },
         });
     } catch (error) {
@@ -86,6 +87,9 @@ const login = async (req, res) => {
             });
         }
 
+        // Backend login endpoint'i hem mobil hem web için ortak kullanılıyor.
+        // Web panel erişim kısıtlaması, frontend'de ve panel.routes.js'de adminOnly middleware ile yapılıyor.
+
         return res.status(200).json({
             success: true,
             message: "Login successful",
@@ -94,6 +98,7 @@ const login = async (req, res) => {
                 id: user._id,
                 name: user.name,
                 email: user.email,
+                role: user.role,
             },
         });
     } catch (error) {
