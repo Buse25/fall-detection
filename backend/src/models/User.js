@@ -43,6 +43,18 @@ const userSchema = new mongoose.Schema(
             default: "",
             trim: true,
         },
+        sleepSchedule: {
+            nightStart: {
+                type: String,
+                default: "23:00",
+                trim: true,
+            },
+            nightEnd: {
+                type: String,
+                default: "07:00",
+                trim: true,
+            },
+        },
     },
     {
         timestamps: true,

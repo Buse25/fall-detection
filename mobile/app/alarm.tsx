@@ -1,25 +1,73 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Vibration, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { BASE_URL, authHeaders } from '@/services/api';
+import { emitFallCancel, emitInactivityCancel, onEmergencyAlert } from '@/services/socket';
+
+// ────────────────────────────────────────────────────────────────────────────
+// Alarm tiplerine göre içerik tablosu
+// ────────────────────────────────────────────────────────────────────────────
+const CONTENT = {
+  fall: {
+    icon: 'warning' as const,
+    title: 'DÜŞME TESPİT EDİLDİ!',
+    subtitle: 'Ani bir düşme tespit edildi. Yardım çok yakında bildirilecek.',
+    cancelLabel: 'İyiyim (İptal Et)',
+    footerText: 'Acil durum kişileri uyarılıyor...',
+  },
+  inactivity: {
+    icon: 'person-off' as const,
+    title: 'HAREKETSİZLİK TESPİT EDİLDİ!',
+    subtitle: 'Uzun süredir hareket algılanmadı. İyi misiniz?',
+    cancelLabel: 'İyiyim, Ben Buradayım',
+    footerText: 'Yanıt vermezseniz acil durum kişileriniz uyarılacak...',
+  },
+} as const;
+
+type AlarmType = keyof typeof CONTENT;
 
 export default function AlarmScreen() {
   const router = useRouter();
-  const { alarmId, fallScore, countdownSec } = useLocalSearchParams<{ alarmId?: string, fallScore?: string, countdownSec?: string }>();
-  
-  const [timeLeft, setTimeLeft] = useState(countdownSec ? parseInt(countdownSec, 10) : 10);
+  const {
+    alarmType: alarmTypeParam,
+    alarmId,
+    fallScore,
+    countdownSec,
+  } = useLocalSearchParams<{
+    alarmType?: string;
+    alarmId?: string;
+    fallScore?: string;
+    countdownSec?: string;
+  }>();
 
+  const alarmType: AlarmType =
+    alarmTypeParam === 'inactivity' ? 'inactivity' : 'fall';
+
+  const initialSec = countdownSec ? parseInt(countdownSec, 10) : 10;
+  const [timeLeft, setTimeLeft] = useState(initialSec > 0 ? initialSec : 10);
+
+  // confirmed: inactivity PRE_ALARM → CONFIRMED geçişi (in-place UI değişimi)
+  const [confirmed, setConfirmed] = useState(initialSec === 0 && alarmType === 'inactivity');
+
+  const content = CONTENT[alarmType];
+
+  // ── Geri sayım ──────────────────────────────────────────────────────────
   useEffect(() => {
+    if (confirmed) return; // CONFIRMED modunda sayaç çalışmaz
+
     Vibration.vibrate([500, 500, 500]);
 
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          triggerEmergency();
+          if (alarmType === 'fall') {
+            triggerEmergency();
+          }
+          // inactivity: backend PRE_ALARM_TIMEOUT'u yönetir; yerel olarak sadece dur
           return 0;
         }
         return prev - 1;
@@ -27,9 +75,23 @@ export default function AlarmScreen() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [confirmed]);
 
-  const cancelAlarm = async () => {
+  // ── inactivity CONFIRMED: emergency_alert gelirse in-place geçiş ────────
+  useEffect(() => {
+    if (alarmType !== 'inactivity') return;
+
+    const unsub = onEmergencyAlert((payload) => {
+      if (payload.type === 'inactivity') {
+        setConfirmed(true);
+        Vibration.vibrate([500, 200, 500, 200, 500]);
+      }
+    });
+    return unsub;
+  }, [alarmType]);
+
+  // ── "İyiyim" — fall tipi: REST API + socket emit ────────────────────────
+  const cancelFallAlarm = async () => {
     Vibration.cancel();
 
     if (alarmId) {
@@ -38,45 +100,93 @@ export default function AlarmScreen() {
           method: 'PATCH',
           headers: authHeaders(),
         });
-
-        if (!response.ok) {
-          throw new Error('API isteği başarısız');
-        }
+        if (!response.ok) throw new Error('API isteği başarısız');
       } catch (err) {
         console.error('Alarm iptal edilemedi:', err);
         Alert.alert('Bağlantı Hatası', 'İptal işlemi başarısız oldu. Lütfen tekrar deneyin.');
-        return; // Geri sayımı durdurmamak için dönüyoruz.
+        return;
       }
     }
-
-    router.back();
+    // Backend'i bilgilendir (panel odası güncellemesi için)
+    emitFallCancel(alarmId);
+    // router.replace: replace önceki push/replace durumuna bakmaksızın çalışır.
+    // router.back() kullanmıyoruz çünkü _layout'taki router.replace('/alarm')
+    // stack geçmişini sildiğinden GO_BACK hatası verir.
+    router.replace('/(tabs)/home');
   };
+
+  // ── "İyiyim, Ben Buradayım" — inactivity tipi: socket emit ─────────────
+  const cancelInactivityAlarm = useCallback(() => {
+    Vibration.cancel();
+    emitInactivityCancel();
+    router.replace('/(tabs)/home');
+  }, []);
+
+  const handleCancel = alarmType === 'inactivity' ? cancelInactivityAlarm : cancelFallAlarm;
 
   const triggerEmergency = () => {
     Vibration.cancel();
     Alert.alert(
       'Acil Durum Tetiklendi!',
       'Kişilere haber veriliyor...',
-      [{ text: 'Tamam', onPress: () => router.back() }],
+      [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/home') }],
     );
   };
 
-  return (
+  // ────────────────────────────────────────────────────────────────────────
+  // CONFIRMED modu (inactivity alarm kesinleşti)
+  // ────────────────────────────────────────────────────────────────────────
+  if (confirmed) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.headerContainer}>
+          <View style={styles.warningIcon}>
+            <MaterialIcons name="emergency" size={48} color="#bb0112" />
+          </View>
+          <Text style={styles.title}>ACİL DURUM!</Text>
+          <Text style={styles.subtitle}>
+            Yanıt alınamadı. Acil durum kişileri bilgilendiriliyor.
+          </Text>
+        </View>
+        <View style={styles.timerContainer}>
+          <View style={styles.circle}>
+            <MaterialIcons name="sos" size={80} color="white" />
+          </View>
+        </View>
+        <View style={styles.actionContainer}>
+          <TouchableOpacity style={styles.btnEmergency} onPress={triggerEmergency}>
+            <MaterialIcons name="sos" size={24} color="#bb0112" />
+            <Text style={styles.btnEmergencyText}>HEMEN YARDIM GÖNDER</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.btnCancel, { marginTop: 8 }]}
+            onPress={() => router.replace('/(tabs)/home')}
+          >
+            <MaterialIcons name="home" size={24} color="white" />
+            <Text style={styles.btnCancelText}>Ana Sayfaya Dön</Text>
+          </TouchableOpacity>
+          <Text style={styles.footerText}>Acil durum kişileri uyarılıyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Normal alarm modu (fall veya inactivity PRE_ALARM)
+  // ────────────────────────────────────────────────────────────────────────
+  return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
 
-      {/* Üst Kısım: Uyarı ve Başlık */}
+      {/* Üst Kısım */}
       <View style={styles.headerContainer}>
         <View style={styles.warningIcon}>
-          <MaterialIcons name="warning" size={48} color="#bb0112" />
+          <MaterialIcons name={content.icon} size={48} color="#bb0112" />
         </View>
-        <Text style={styles.title}>DÜŞME TESPİT EDİLDİ!</Text>
-        <Text style={styles.subtitle}>
-          Ani bir düşme tespit edildi. Yardım çok yakında bildirilecek.
-        </Text>
+        <Text style={styles.title}>{content.title}</Text>
+        <Text style={styles.subtitle}>{content.subtitle}</Text>
       </View>
 
-      {/* Orta Kısım: Geri Sayım */}
+      {/* Geri Sayım */}
       <View style={styles.timerContainer}>
         <View style={styles.circle}>
           <Text style={styles.timerText}>{timeLeft}</Text>
@@ -85,11 +195,11 @@ export default function AlarmScreen() {
         <Text style={styles.timerLabel}>Süre dolduğunda yardım çağrılacak</Text>
       </View>
 
-      {/* Alt Kısım: Butonlar */}
+      {/* Butonlar */}
       <View style={styles.actionContainer}>
-        <TouchableOpacity style={styles.btnCancel} onPress={cancelAlarm}>
+        <TouchableOpacity style={styles.btnCancel} onPress={handleCancel}>
           <MaterialIcons name="check-circle" size={28} color="white" />
-          <Text style={styles.btnCancelText}>İyiyim (İptal Et)</Text>
+          <Text style={styles.btnCancelText}>{content.cancelLabel}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.btnEmergency} onPress={triggerEmergency}>
@@ -97,7 +207,7 @@ export default function AlarmScreen() {
           <Text style={styles.btnEmergencyText}>HEMEN YARDIM GÖNDER</Text>
         </TouchableOpacity>
 
-        <Text style={styles.footerText}>Acil durum kişileri uyarılıyor...</Text>
+        <Text style={styles.footerText}>{content.footerText}</Text>
       </View>
 
     </SafeAreaView>

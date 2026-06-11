@@ -17,9 +17,22 @@ export interface FallDetectedPayload {
 }
 type FallListener = (payload: FallDetectedPayload) => void;
 
+export interface InactivityPreAlarmPayload {
+  countdownSec: number;
+}
+type InactivityPreAlarmListener = (payload: InactivityPreAlarmPayload) => void;
+
+export interface EmergencyAlertPayload {
+  alarmId: string;
+  type: 'fall' | 'inactivity';
+}
+type EmergencyAlertListener = (payload: EmergencyAlertPayload) => void;
+
 const connectionListeners = new Set<ConnectionListener>();
 const queueListeners = new Set<QueueListener>();
 const fallListeners = new Set<FallListener>();
+const inactivityPreAlarmListeners = new Set<InactivityPreAlarmListener>();
+const emergencyAlertListeners = new Set<EmergencyAlertListener>();
 
 function notifyConnectionListeners(connected: boolean) {
   connectionListeners.forEach(fn => fn(connected));
@@ -67,6 +80,21 @@ export function connectSocket(): Socket {
   socket.on('fall_detected', (payload: FallDetectedPayload) => {
     console.log('[Socket] Düşme tespit edildi (fall_detected):', payload);
     fallListeners.forEach(fn => fn(payload));
+  });
+
+  socket.on('inactivity_pre_alarm', (payload: InactivityPreAlarmPayload) => {
+    console.log('[Socket] Hareketsizlik ön alarmı (inactivity_pre_alarm):', payload);
+    inactivityPreAlarmListeners.forEach(fn => fn(payload));
+  });
+
+  socket.on('inactivity_cancelled', () => {
+    console.log('[Socket] Hareketsizlik ön alarmı otomatik iptal edildi (inactivity_cancelled)');
+    inactivityPreAlarmListeners.forEach(fn => fn({ countdownSec: 0, _cancelled: true } as any));
+  });
+
+  socket.on('emergency_alert', (payload: EmergencyAlertPayload) => {
+    console.log('[Socket] Acil durum alarmı (emergency_alert):', payload);
+    emergencyAlertListeners.forEach(fn => fn(payload));
   });
 
   socket.on('disconnect', reason => {
@@ -118,6 +146,34 @@ export function onOfflineQueueChange(fn: QueueListener): () => void {
 export function onFallDetected(fn: FallListener): () => void {
   fallListeners.add(fn);
   return () => fallListeners.delete(fn);
+}
+
+/** Hareketsizlik ön alarm event'lerini dinler (inactivity_pre_alarm + inactivity_cancelled). */
+export function onInactivityPreAlarm(fn: InactivityPreAlarmListener): () => void {
+  inactivityPreAlarmListeners.add(fn);
+  return () => inactivityPreAlarmListeners.delete(fn);
+}
+
+/** Acil durum alarm event'lerini dinler (fall CONFIRMED veya inactivity CONFIRMED). */
+export function onEmergencyAlert(fn: EmergencyAlertListener): () => void {
+  emergencyAlertListeners.add(fn);
+  return () => emergencyAlertListeners.delete(fn);
+}
+
+/** Backend'e hareketsizlik ön alarmını iptal ettirir. */
+export function emitInactivityCancel(): void {
+  const s = getSocket();
+  if (s?.connected) {
+    s.emit('inactivity_cancel');
+  }
+}
+
+/** Backend'e düşme alarmının kullanıcı tarafından iptal edildiğini bildirir. */
+export function emitFallCancel(alarmId?: string): void {
+  const s = getSocket();
+  if (s?.connected) {
+    s.emit('fall_cancel', { alarmId });
+  }
 }
 
 export interface SensorReading {

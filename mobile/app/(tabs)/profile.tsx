@@ -10,10 +10,16 @@ import { useRouter } from 'expo-router';
 import { BASE_URL, authHeaders, clearAuth } from '@/services/api';
 import CatchMeIcon from '@/components/CatchMeIcon';
 
+interface SleepSchedule {
+  nightStart: string; // HH:mm
+  nightEnd:   string; // HH:mm
+}
+
 interface UserProfile {
   id: string;
   name: string;
   email: string;
+  sleepSchedule?: SleepSchedule;
 }
 
 export default function ProfileScreen() {
@@ -24,6 +30,8 @@ export default function ProfileScreen() {
   const [profileType, setProfileType] = useState('elderly');
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
+  const [nightStart, setNightStart] = useState('23:00');
+  const [nightEnd,   setNightEnd]   = useState('07:00');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -50,6 +58,8 @@ export default function ProfileScreen() {
         setProfile(data.user);
         setName(data.user.name || '');
         setProfileType(data.user.profileType || 'elderly');
+        setNightStart(data.user.sleepSchedule?.nightStart || '23:00');
+        setNightEnd(data.user.sleepSchedule?.nightEnd   || '07:00');
       } else if (response.status === 401) {
         Alert.alert('Oturum Süresi Doldu', 'Lütfen tekrar giriş yapın.', [
           { text: 'Giriş Yap', onPress: () => { clearAuth(); router.replace('/'); } },
@@ -68,9 +78,16 @@ export default function ProfileScreen() {
     }
   };
 
+  const HH_MM_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
   const handleSave = async () => {
     if (name.trim() === '') {
       Alert.alert('Hata', 'Ad Soyad alanı boş bırakılamaz.');
+      return;
+    }
+
+    if (!HH_MM_REGEX.test(nightStart) || !HH_MM_REGEX.test(nightEnd)) {
+      Alert.alert('Hata', 'Uyku saatleri HH:mm formatında olmalıdır (örn: 23:00, 07:00).');
       return;
     }
 
@@ -87,6 +104,7 @@ export default function ProfileScreen() {
           profileType,
           emergencyContactName: emergencyContactName.trim(),
           emergencyContactPhone: emergencyContactPhone.trim(),
+          sleepSchedule: { nightStart: nightStart.trim(), nightEnd: nightEnd.trim() },
         }),
         signal: controller.signal,
       });
@@ -100,6 +118,8 @@ export default function ProfileScreen() {
           setProfile(data.user);
           setName(data.user.name || '');
           setProfileType(data.user.profileType || 'elderly');
+        setNightStart(data.user.sleepSchedule?.nightStart || '23:00');
+        setNightEnd(data.user.sleepSchedule?.nightEnd   || '07:00');
         }
       } else {
         Alert.alert(
@@ -281,6 +301,46 @@ export default function ProfileScreen() {
                   keyboardType="phone-pad"
                 />
               </View>
+            </View>
+          </View>
+
+          {/* ---- Uyku Takvimi ---- */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Uyku Takvimi</Text>
+            <Text style={styles.sectionSub}>
+              Gece saatlerinde hareketsizlik eşiği otomatik artırılır.
+            </Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Uyku Başlangıcı</Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons name="bedtime" size={20} color="#424654" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="23:00"
+                  value={nightStart}
+                  onChangeText={setNightStart}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+              </View>
+              <Text style={styles.inputHint}>HH:mm formatında girin (örn: 23:00)</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Uyanış Saati</Text>
+              <View style={styles.inputContainer}>
+                <MaterialIcons name="wb-sunny" size={20} color="#424654" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="07:00"
+                  value={nightEnd}
+                  onChangeText={setNightEnd}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                />
+              </View>
+              <Text style={styles.inputHint}>HH:mm formatında girin (örn: 07:00)</Text>
             </View>
           </View>
 

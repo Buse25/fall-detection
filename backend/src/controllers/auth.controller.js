@@ -111,6 +111,9 @@ const getMe = async (req, res) => {
     });
 };
 
+/** HH:mm formatını doğrular (00:00 – 23:59). */
+const HH_MM_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const updateMe = async (req, res) => {
     try {
         const allowedFields = [
@@ -126,6 +129,18 @@ const updateMe = async (req, res) => {
                 updateData[field] = req.body[field];
             }
         });
+
+        // sleepSchedule: nested object — ayrı işlenir
+        if (req.body.sleepSchedule !== undefined) {
+            const { nightStart, nightEnd } = req.body.sleepSchedule || {};
+            if (!HH_MM_REGEX.test(nightStart) || !HH_MM_REGEX.test(nightEnd)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "sleepSchedule.nightStart ve nightEnd HH:mm formatında olmalıdır (örn: '23:00').",
+                });
+            }
+            updateData.sleepSchedule = { nightStart, nightEnd };
+        }
 
         const updatedUser = await User.findByIdAndUpdate(
             req.user._id,
