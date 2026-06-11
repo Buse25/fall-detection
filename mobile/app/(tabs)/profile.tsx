@@ -37,8 +37,6 @@ export default function ProfileScreen() {
   const [name, setName] = useState('');
   // backend 'worker'/'athlete' gibi başka tipler de döndürebilir; mobilde 'other' olarak göster
   const [profileType, setProfileType] = useState<ProfileType>('other');
-  const [emergencyContactName,  setEmergencyContactName]  = useState('');
-  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [nightStart, setNightStart] = useState('23:00');
   const [nightEnd,   setNightEnd]   = useState('07:00');
 
@@ -76,8 +74,6 @@ export default function ProfileScreen() {
         setName(u.name || '');
         // backend 'worker'/'athlete' gibi değerler döndürebilir → 'other' olarak normalize et
         setProfileType(u.profileType === 'elderly' ? 'elderly' : 'other');
-        setEmergencyContactName(u.emergencyContactName   || '');
-        setEmergencyContactPhone(u.emergencyContactPhone || '');
         setNightStart(u.sleepSchedule?.nightStart || '23:00');
         setNightEnd(u.sleepSchedule?.nightEnd     || '07:00');
       } else if (response.status === 401) {
@@ -145,8 +141,6 @@ export default function ProfileScreen() {
         body: JSON.stringify({
           name:                  name.trim(),
           profileType,
-          emergencyContactName:  emergencyContactName.trim(),
-          emergencyContactPhone: emergencyContactPhone.trim(),
           sleepSchedule: { nightStart: nightStart.trim(), nightEnd: nightEnd.trim() },
           ...passwordFields,
         }),
@@ -161,8 +155,6 @@ export default function ProfileScreen() {
         setProfile(u);
         setName(u.name || '');
         setProfileType(u.profileType === 'elderly' ? 'elderly' : 'other');
-        setEmergencyContactName(u.emergencyContactName   || '');
-        setEmergencyContactPhone(u.emergencyContactPhone || '');
         setNightStart(u.sleepSchedule?.nightStart || '23:00');
         setNightEnd(u.sleepSchedule?.nightEnd     || '07:00');
 
@@ -319,42 +311,6 @@ export default function ProfileScreen() {
                 </View>
                 <Text style={styles.cardTitle}>Genç/Aktif</Text>
               </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* ---- Acil Durum Kişisi ---- */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Acil Durum Kişisi</Text>
-            <Text style={styles.sectionSub}>
-              Düşme tespitinde öncelikli olarak aranacak kişi
-            </Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Kişi Adı Soyadı</Text>
-              <View style={styles.inputContainer}>
-                <MaterialIcons name="contact-phone" size={20} color="#424654" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Örn: Ayşe Yılmaz"
-                  value={emergencyContactName}
-                  onChangeText={setEmergencyContactName}
-                  autoCapitalize="words"
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Telefon Numarası</Text>
-              <View style={styles.inputContainer}>
-                <MaterialIcons name="phone" size={20} color="#424654" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Örn: +90 555 123 4567"
-                  value={emergencyContactPhone}
-                  onChangeText={setEmergencyContactPhone}
-                  keyboardType="phone-pad"
-                />
-              </View>
             </View>
           </View>
 

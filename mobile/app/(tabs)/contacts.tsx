@@ -229,22 +229,6 @@ export default function ContactsScreen() {
           </View>
         )}
 
-        {/* Sabit Acil Servisler Kartı */}
-        <TouchableOpacity style={styles.emergencyCard}>
-          <View style={styles.cardLeft}>
-            <View style={styles.emergencyIconBg}>
-              <MaterialIcons name="emergency" size={28} color="#bb0112" />
-            </View>
-            <View>
-              <Text style={styles.emergencyCardTitle}>Acil Servis</Text>
-              <Text style={styles.emergencyCardSub}>Evrensel 112 / 110</Text>
-            </View>
-          </View>
-          <View style={styles.callButtonWhite}>
-            <MaterialIcons name="call" size={24} color="#bb0112" />
-          </View>
-        </TouchableOpacity>
-
         {/* Bilgi Kutusu */}
         <View style={styles.infoBox}>
           <MaterialIcons name="info-outline" size={24} color="#0056d2" style={{ marginTop: 2 }} />
@@ -395,17 +379,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10, paddingHorizontal: 24,
   },
   emptyAddBtnText: { color: '#0040a1', fontSize: 15, fontWeight: '600' },
-
-  emergencyCard: {
-    backgroundColor: '#bb0112', borderRadius: 16, padding: 16,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 16, elevation: 4,
-  },
-  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  emergencyIconBg: { backgroundColor: 'white', padding: 10, borderRadius: 20 },
-  emergencyCardTitle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  emergencyCardSub: { color: '#ffdad6', fontSize: 14 },
-  callButtonWhite: { backgroundColor: 'white', padding: 12, borderRadius: 24 },
 
   infoBox: {
     flexDirection: 'row', backgroundColor: '#f2f4f6', padding: 16,
