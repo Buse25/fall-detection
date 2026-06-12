@@ -27,15 +27,15 @@ export default function Sidebar() {
     <nav className="hidden md:flex flex-col h-screen w-64 flex-shrink-0 bg-surface border-r border-outline-variant py-gutter px-base z-20">
       {/* Başlık */}
       <div className="flex items-center px-gutter py-stack-md mb-stack-lg">
-        <div className="w-8 h-8 rounded bg-primary-container flex items-center justify-center mr-stack-sm text-on-primary-container">
-          <span className="material-symbols-outlined text-base">monitor_heart</span>
+        <div className="w-8 h-8 rounded bg-primary-container flex items-center justify-center mr-stack-sm text-on-primary-container overflow-hidden">
+          <img src="/icon.png" alt="CatchMe Logo" className="w-full h-full object-cover" />
         </div>
         <div>
           <h1 className="font-headline-sm text-headline-sm font-bold text-primary leading-tight">
             CatchMe
           </h1>
           <p className="font-label-md text-label-md text-on-surface-variant">
-            Clinical Monitoring
+            Fall Detection System
           </p>
         </div>
       </div>

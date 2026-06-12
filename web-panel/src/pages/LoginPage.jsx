@@ -67,10 +67,8 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md">
         {/* Logo kartı */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-container mb-4 shadow-lg">
-            <span className="material-symbols-outlined text-3xl text-on-primary-container">
-              monitor_heart
-            </span>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-container mb-4 shadow-lg overflow-hidden">
+            <img src="/icon.png" alt="CatchMe Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="font-headline-lg text-headline-lg text-on-background">
             CatchMe
