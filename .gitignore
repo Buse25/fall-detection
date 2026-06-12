@@ -1,2 +1,11 @@
 node_modules
 .env
+
+# Python Sanal Ortamı
+venv/
+.venv/
+env/
+
+# Python Ön Bellek Dosyaları
+__pycache__/
+*.pyc
