@@ -1,16 +1,6 @@
 /**
  * DevicesPage — Cihaz Yönetimi sayfası
- * Tasarım: cihaz_y_netimi_vigilantcare/code.html'den dönüştürüldü
- *
- * TODO: GET /api/devices endpoint'i backend'de henüz uygulanmamış (device.routes.js boş).
- *       Geçici çözüm: Sensör verisindeki benzersiz deviceId'ler listeleniyor.
- *       Backend hazır olduğunda bu sayfayı şu şekilde güncelleyin:
- *         import { getDevices } from "../api/devices";
- *         ve useEffect içinde loadDevices() fonksiyonunu çağırın.
- *
- * Mevcut veri kaynağı:
- *   GET /api/sensor-data → benzersiz deviceId + son kayıt zamanı çıkarılır
- *   GET /api/sensor-data/latest → istatistik kartları için
+ * Veri kaynağı: GET /api/panel/devices (Device koleksiyonu + canlı socket güncellemeleri)
  */
 import { useState, useEffect, useCallback } from "react";
 import PageLayout from "../components/layout/PageLayout";

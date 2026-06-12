@@ -217,20 +217,10 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.mainButton, isStreaming ? styles.btnStop : styles.btnStart]}
-          onPress={() => setIsStreaming(!isStreaming)}
-        >
-          <MaterialIcons name={isStreaming ? 'pause-circle' : 'play-circle'} size={28} color="white" />
-          <Text style={styles.mainButtonText}>
-            {isStreaming ? 'Sensör İzlemeyi Durdur' : 'Sensör İzlemeyi Başlat'}
-          </Text>
-        </TouchableOpacity>
+        {/* Başlat/Durdur butonu kaldırıldı — akış her zaman aktif */}
 
         <Text style={styles.infoText}>
-          {isStreaming
-            ? `Pencere: ${windowProgress}/${WINDOW_SIZE} okuma · ${windowsSent} pencere gönderildi`
-            : 'Sensör akışı durduruldu. Başlatmak için düğmeye dokunun.'}
+          {`Pencere: ${windowProgress}/${WINDOW_SIZE} okuma · ${windowsSent} pencere gönderildi`}
         </Text>
 
         <View style={styles.grid}>
