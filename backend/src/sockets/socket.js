@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const SensorData = require("../models/SensorData");
 const Alarm = require("../models/Alarm");
+const Device = require("../models/Device");
 const { detectFallRuleBased } = require("../analysis/fallDetection");
 const { predictFall } = require("../services/aiService");
 const { setImpactDetected, getState, clearState } = require("../services/fallStateManager");
@@ -185,6 +186,13 @@ function initSocket(httpServer) {
                     fallScore: aiRawResult ? aiRawResult.probability : magnitude,
                     detectionMethod: aiRawResult ? "ai-model" : "rule-based",
                 });
+
+                // Cihazı upsert et: varsa lastSeen/isOnline güncelle, yoksa yeni kayıt oluştur.
+                await Device.findOneAndUpdate(
+                    { deviceId },
+                    { userId: socket.userId, lastSeen: new Date(), isOnline: true },
+                    { upsert: true, setDefaultsOnInsert: true, returnDocument: 'after' }
+                );
 
                 // ── 4. AI yoksa kural tabanlı fallback ────────────────────────
                 if (!aiRawResult) {

@@ -8,7 +8,7 @@ import { Accelerometer, Gyroscope } from 'expo-sensors';
 import { useRouter, Redirect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import CatchMeIcon from '@/components/CatchMeIcon';
-import { clearAuth, getUserId, getUserName } from '@/services/api';
+import { clearAuth, getUserId, getUserName, getOrCreateDeviceId } from '@/services/api';
 import {
   emitSensorWindow,
   onSocketConnectionChange,
@@ -33,6 +33,8 @@ export default function HomeScreen() {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>('idle');
   const [windowProgress, setWindowProgress] = useState(0);
   const [windowsSent, setWindowsSent] = useState(0);
+  /** Cihaza özgü kalıcı ID — AsyncStorage'dan yüklenir, yüklenene kadar null */
+  const [deviceId, setDeviceId] = useState<string | null>(null);
 
   const accelRef = useRef({ x: 0, y: 0, z: 0 });
   const gyroRef = useRef({ x: 0, y: 0, z: 0 });
@@ -48,6 +50,11 @@ export default function HomeScreen() {
   useEffect(() => {
     setIsStreaming(true);
     return () => setIsStreaming(false);
+  }, []);
+
+  // Cihaz kimliğini AsyncStorage'dan yükle (ya da ilk kullanımda üret)
+  useEffect(() => {
+    getOrCreateDeviceId().then(setDeviceId);
   }, []);
 
   /* Sensör dinleyicileri — ref'lere yazar, state güncellemez (performans) */
@@ -111,9 +118,12 @@ export default function HomeScreen() {
       setWindowProgress(windowBufferRef.current.length);
 
       if (windowBufferRef.current.length >= WINDOW_SIZE) {
+        // deviceId henüz yüklenmediyse boş payload gönderme
+        if (!deviceId) return;
+
         const payload = {
           userId: userId || 'anonim_kullanici',
-          deviceId: 'mobil_cihaz_02',
+          deviceId,
           windowStart: windowStartRef.current,
           windowEnd: now,
           sampleRateHz: SAMPLE_RATE_HZ,
@@ -135,7 +145,7 @@ export default function HomeScreen() {
 
     const intervalId = setInterval(tick, SAMPLE_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [isStreaming, userId]);
+  }, [isStreaming, userId, deviceId]);
 
   const simulateFall = () => router.push('/alarm');
 
