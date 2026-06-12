@@ -18,6 +18,7 @@ import FallAlert from "../components/ui/FallAlert";
 import SensorChart from "../components/SensorChart";
 import RecentAlarms from "../components/RecentAlarms";
 import { fetchStats, fetchRecentAlarms, fetchSensorChart, fetchDevices } from "../api/panel";
+import { resolveAlarm } from "../api/alarms";
 import { getSocket, connectSocket } from "../socket/socket";
 import { useAuth } from "../context/AuthContext";
 
@@ -230,6 +231,28 @@ export default function DashboardPage() {
 
   const unresolved = stats?.unresolvedAlarms ?? 0;
 
+  // ── Alarm çözme ───────────────────────────────────────────────────────────
+  async function handleResolve(alarmId) {
+    try {
+      await resolveAlarm(alarmId);
+      // Sayfa yenilemeden yerel state'i güncelle
+      setAlarms((prev) =>
+        prev.map((a) =>
+          String(a._id) === String(alarmId)
+            ? { ...a, isResolved: true, resolvedAt: new Date().toISOString() }
+            : a
+        )
+      );
+      setStats((prev) =>
+        prev
+          ? { ...prev, unresolvedAlarms: Math.max(0, (prev.unresolvedAlarms ?? 1) - 1) }
+          : prev
+      );
+    } catch (err) {
+      console.error("[Dashboard] Alarm çözülemedi:", err.message);
+    }
+  }
+
   return (
     <PageLayout unreadAlarms={unresolved}>
       {/* Anlık düşme bildirimi */}
@@ -299,7 +322,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <RecentAlarms alarms={alarms} />
+                <RecentAlarms alarms={alarms} onResolve={handleResolve} />
               </div>
             </div>
           </div>

@@ -2,6 +2,7 @@
  * RecentAlarms — Son alarmlar listesi (Dashboard'da kullanılır)
  * @param {{ alarms: Array, onResolve?: function }} props
  */
+import { useState } from "react";
 import AlarmBadge from "./AlarmBadge";
 
 const ALARM_TYPE_MAP = {
@@ -23,7 +24,9 @@ function formatDate(dateStr) {
   });
 }
 
-export default function RecentAlarms({ alarms = [] }) {
+export default function RecentAlarms({ alarms = [], onResolve }) {
+  // Hangi alarm ID'si şu an API isteğinde — çift tıklamayı önler
+  const [resolvingId, setResolvingId] = useState(null);
   if (alarms.length === 0) {
     return (
       <div className="py-10 text-center">
@@ -37,10 +40,21 @@ export default function RecentAlarms({ alarms = [] }) {
     );
   }
 
+  async function handleClick(alarmId) {
+    if (resolvingId || !onResolve) return;
+    setResolvingId(alarmId);
+    try {
+      await onResolve(alarmId);
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
   return (
     <ul className="divide-y divide-outline-variant/40">
       {alarms.map((alarm) => {
         const typeInfo = ALARM_TYPE_MAP[alarm.alarmType] ?? ALARM_TYPE_MAP.default;
+        const isLoading = resolvingId === String(alarm._id);
         return (
           <li
             key={alarm._id}
@@ -63,7 +77,33 @@ export default function RecentAlarms({ alarms = [] }) {
               </div>
             </div>
 
-            {/* Sağ: rozet kaldırıldı */}
+            {/* Sağ: çözüldü göstergesi veya resolve butonu */}
+            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+              {alarm.isResolved ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-label-md text-label-md select-none">
+                  <span className="material-symbols-outlined text-base" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    check_circle
+                  </span>
+                  Çözüldü
+                </span>
+              ) : (
+                <button
+                  onClick={() => handleClick(String(alarm._id))}
+                  disabled={!!resolvingId}
+                  title="Alarmı çözüldü olarak işaretle"
+                  className="flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:text-green-600 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                >
+                  <span
+                    className={`material-symbols-outlined text-xl ${
+                      isLoading ? "animate-spin" : ""
+                    }`}
+                    style={isLoading ? {} : { fontVariationSettings: "'FILL' 0" }}
+                  >
+                    {isLoading ? "progress_activity" : "check_circle"}
+                  </span>
+                </button>
+              )}
+            </div>
           </li>
         );
       })}
