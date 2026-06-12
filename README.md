@@ -1,477 +1,133 @@
-# Fall Detection Backend
+# 🏃 CatchMe - Gerçek Zamanlı Düşme ve Hareketsizlik Tespiti Platformu
 
-## API Usage
+## 📖 Proje Özeti
 
-Base URL:
+**CatchMe**, özellikle yaşlı bireyler ve yalnız yaşayan kişiler için tasarlanmış, akıllı telefon sensörlerini (ivmeölçer ve jiroskop) birer IoT uç düğümü olarak kullanan yapay zeka destekli bir güvenlik platformudur. 
 
-```text
-http://localhost:5000
+Uygulama, sensör verilerini yüksek frekansta (50 Hz) okur ve gerçek zamanlı olarak analiz ederek düşme veya uzun süreli hareketsizlik durumlarını anında tespit eder. Acil bir durumda ise yetkili acil durum kişilerine otomatik olarak yüksek öncelikli bildirim göndererek kritik durumlarda müdahale süresini en aza indirir.
+
+## ✨ Öne Çıkan Özellikler
+
+- 🧠 **AI Destekli Düşme Tespiti:** Python/FastAPI tabanlı bağımsız bir mikroservis üzerinden scikit-learn (Random Forest) modeli ile yüksek doğruluklu düşme analizi ve anomali tespiti.
+- 🚦 **Redis Durum Makineleri (State Machines):** Yanlış alarmları önlemek için çok aşamalı düşme onayı (NORMAL → IMPACT_DETECTED → FALL_CONFIRMED) ve kullanıcının uyku takvimine göre çalışan gece/gündüz dinamik eşikli hareketsizlik takibi.
+- 📡 **Gerçek Zamanlı Web Paneli:** Adminler için Socket.IO destekli, React, Vite ve Tailwind CSS ile geliştirilmiş canlı dashboard. Tüm cihazları, düşmeleri ve Recharts üzerinden sensör grafiklerini anlık olarak izleme imkanı.
+- 📶 **Offline Kuyruk Mimarisi:** Mobil uygulamada olası ağ kesintilerinde veri kaybını önleyen, bellek içi çevrimdışı (FIFO) veri tamponlama sistemi. Bağlantı kurulduğunda veriler senkronize edilir.
+- 🔄 **Jiroskop ve İvmeölçer Entegrasyonu:** Sensör verilerinin eş zamanlı okunması, varyans hesaplaması ve AI modeline zengin öznitelikler (features) sunulması.
+- 🛡️ **Kural Tabanlı Fallback:** AI servisinin ulaşılamadığı durumlarda sistemin kesintisiz çalışmasını sağlayan şiddet eşiği tabanlı (`magnitude > 2.5g`) güvenli yedekleme mekanizması.
+
+## 🏗️ Sistem Mimarisi ve Kullanılan Teknolojiler
+
+Platform, bağımsız olarak geliştirilebilir ve ölçeklenebilir 4 ana katmandan oluşmaktadır:
+
+1. **Backend (API ve İş Mantığı Katmanı)**
+   - Teknolojiler: `Node.js`, `Express.js`, `Socket.IO`
+   - Veritabanı ve Durum Yönetimi: `MongoDB (Mongoose)`, `Redis`
+2. **Mobil İstemci (Sunum Katmanı)**
+   - Teknolojiler: `React Native`, `Expo (TypeScript)`, `Expo Router`, `Socket.IO Client`
+3. **Web Panel (Admin Dashboard)**
+   - Teknolojiler: `React`, `Vite`, `Tailwind CSS`, `Recharts`
+4. **AI Mikroservisi**
+   - Teknolojiler: `Python 3.12+`, `FastAPI`, `scikit-learn`, `uvicorn`
+
+## ⚙️ Ortam Değişkenleri (.env)
+
+Sistemin çalışması için, **backend** dizininde bir `.env` dosyası oluşturmalısınız. Aşağıdaki şablonu doğrudan kullanabilirsiniz:
+
+```env
+# Çevre ve Sunucu Ayarları
+NODE_ENV=development
+PORT=5000
+
+# Veritabanı & Önbellek Bağlantıları
+MONGO_URI=mongodb://127.0.0.1:27017/fall-detection
+REDIS_URL=redis://localhost:6379
+
+# Güvenlik ve Yetkilendirme
+JWT_SECRET=change_this_to_a_long_random_secret
+CORS_ORIGIN=http://localhost:3000,http://localhost:5173
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX=1000
+
+# Mikroservis Bağlantısı (FastAPI Servisi)
+AI_SERVICE_URL=http://localhost:8000
+
+# Hareketsizlik ve Alarm Eşikleri (Saniye cinsinden)
+INACTIVITY_THRESHOLD_DAY_SEC=7200      # Gündüz: 2 saat hareketsizlik eşiği
+INACTIVITY_THRESHOLD_NIGHT_SEC=28800   # Gece: 8 saat uyku eşiği
+PRE_ALARM_TIMEOUT_SEC=60               # Alarm kesinleşme bekleme süresi
 ```
 
-Protected endpoints require a JWT token in the `Authorization` header:
+## 🚀 Kurulum ve Çalıştırma
 
-```http
-Authorization: Bearer <token>
-```
+Projeyi kendi bilgisayarınızda yerel (local) olarak çalıştırmak için, sisteminizde Node.js, Python, MongoDB ve Redis servislerinin kurulu ve aktif olduğundan emin olun. Ardından adım adım aşağıdaki talimatları izleyin:
 
-The token is returned by the register and login endpoints.
-
-## Health Check
-
-```http
-GET /health
-```
-
-Response:
-
-```json
-{
-  "status": "OK",
-  "service": "fall-detection-backend",
-  "timestamp": "2026-05-18T10:00:00.000Z"
-}
-```
-
-## Validation Errors
-
-Request validation errors return this standard JSON format:
-
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": []
-}
-```
-
-## Auth Endpoints
-
-### Register
-
-```http
-POST /api/auth/register
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "name": "Test User",
-  "email": "test@example.com",
-  "password": "password123"
-}
-```
-
-Validation rules:
-
-- `name` is required.
-- `email` must be a valid email address.
-- `password` must be at least 6 characters long.
-
-Response:
-
-```json
-{
-  "success": true,
-  "message": "User registered successfully",
-  "token": "jwt-token",
-  "user": {
-    "id": "user-id",
-    "name": "Test User",
-    "email": "test@example.com"
-  }
-}
-```
-
-### Login
-
-```http
-POST /api/auth/login
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "email": "test@example.com",
-  "password": "password123"
-}
-```
-
-Validation rules:
-
-- `email` must be a valid email address.
-- `password` is required.
-
-Response:
-
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "token": "jwt-token",
-  "user": {
-    "id": "user-id",
-    "name": "Test User",
-    "email": "test@example.com"
-  }
-}
-```
-
-### Get Current User
-
-Protected endpoint.
-
-```http
-GET /api/auth/me
-Authorization: Bearer <token>
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "user": {
-    "_id": "user-id",
-    "name": "Test User",
-    "email": "test@example.com",
-    "role": "user",
-    "createdAt": "2026-05-18T10:00:00.000Z",
-    "updatedAt": "2026-05-18T10:00:00.000Z"
-  }
-}
-```
-
-## Sensor Data Endpoints
-
-All sensor data endpoints are protected and require:
-
-```http
-Authorization: Bearer <token>
-```
-
-When creating sensor data, `userId` is taken from the authenticated JWT user. Do not send `userId` in the request body.
-
-### Create Sensor Data
-
-```http
-POST /api/sensor-data
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-Request:
-
-```json
-{
-  "deviceId": "device-1",
-  "timestamp": "2026-05-18T10:00:00.000Z",
-  "accelerometer": {
-    "x": 1,
-    "y": 0,
-    "z": 0
-  },
-  "gyroscope": {
-    "x": 0,
-    "y": 0,
-    "z": 0
-  }
-}
-```
-
-Validation rules:
-
-- `deviceId` is required and must be a string.
-- `accelerometer.x`, `accelerometer.y`, and `accelerometer.z` are required numbers.
-- `gyroscope.x`, `gyroscope.y`, and `gyroscope.z` are required numbers.
-- `timestamp` is optional. When provided, it must be a valid ISO date.
-
-Response:
-
-```json
-{
-  "success": true,
-  "message": "Sensor data saved successfully",
-  "data": {
-    "_id": "sensor-data-id",
-    "userId": "authenticated-user-id",
-    "deviceId": "device-1",
-    "timestamp": "2026-05-18T10:00:00.000Z",
-    "accelerometer": {
-      "x": 1,
-      "y": 0,
-      "z": 0,
-      "magnitude": 1
-    },
-    "gyroscope": {
-      "x": 0,
-      "y": 0,
-      "z": 0
-    },
-    "isFallDetected": false,
-    "fallScore": 1
-  }
-}
-```
-
-### List Sensor Data
-
-```http
-GET /api/sensor-data
-Authorization: Bearer <token>
-```
-
-Supported query params:
-
-- `page`: positive integer, defaults to `1`.
-- `limit`: positive integer between `1` and `100`, defaults to `10`.
-- `deviceId`: filters by exact device id.
-- `isFallDetected`: filters by `true` or `false`.
-- `startDate`: filters records whose `timestamp` is greater than or equal to this ISO date.
-- `endDate`: filters records whose `timestamp` is less than or equal to this ISO date.
-
-Examples:
-
-```http
-GET /api/sensor-data?page=1&limit=20
-GET /api/sensor-data?deviceId=device-1
-GET /api/sensor-data?isFallDetected=true
-GET /api/sensor-data?startDate=2026-05-18T00:00:00.000Z&endDate=2026-05-19T23:59:59.999Z
-GET /api/sensor-data?page=2&limit=10&deviceId=device-1&isFallDetected=false
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "count": 1,
-  "page": 1,
-  "limit": 10,
-  "total": 1,
-  "pages": 1,
-  "data": [
-    {
-      "_id": "sensor-data-id",
-      "userId": "authenticated-user-id",
-      "deviceId": "device-1",
-      "isFallDetected": false,
-      "fallScore": 1
-    }
-  ]
-}
-```
-
-### Get Latest Sensor Data
-
-```http
-GET /api/sensor-data/latest
-Authorization: Bearer <token>
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "data": {
-    "_id": "sensor-data-id",
-    "userId": "authenticated-user-id",
-    "deviceId": "device-1",
-    "isFallDetected": false,
-    "fallScore": 1
-  }
-}
-```
-
-### List Fall Detected Sensor Data
-
-```http
-GET /api/sensor-data/falls
-Authorization: Bearer <token>
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "count": 1,
-  "data": [
-    {
-      "_id": "sensor-data-id",
-      "userId": "authenticated-user-id",
-      "deviceId": "fall-device",
-      "isFallDetected": true,
-      "fallScore": 3
-    }
-  ]
-}
-```
-
-## Admin Endpoints
-
-Admin endpoints require a valid JWT token for a user whose `role` is `admin`.
-
-```http
-Authorization: Bearer <admin-token>
-```
-
-### Admin Example
-
-```http
-GET /api/admin/example
-Authorization: Bearer <admin-token>
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "message": "Admin endpoint accessed successfully"
-}
-```
-
-### List Users
-
-```http
-GET /api/admin/users
-Authorization: Bearer <admin-token>
-```
-
-Returns all users newest first by `createdAt`. User passwords are never returned.
-
-Response:
-
-```json
-{
-  "success": true,
-  "count": 1,
-  "data": [
-    {
-      "_id": "user-id",
-      "name": "Test User",
-      "email": "test@example.com",
-      "role": "user",
-      "createdAt": "2026-05-18T10:00:00.000Z",
-      "updatedAt": "2026-05-18T10:00:00.000Z"
-    }
-  ]
-}
-```
-
-### List Falls
-
-```http
-GET /api/admin/falls?page=1&limit=10
-Authorization: Bearer <admin-token>
-```
-
-Returns all `isFallDetected=true` sensor records across all users, newest first by `timestamp`.
-
-Supported query params:
-
-- `page`: positive integer, defaults to `1`.
-- `limit`: positive integer between `1` and `100`, defaults to `10`.
-
-Response:
-
-```json
-{
-  "success": true,
-  "count": 1,
-  "page": 1,
-  "limit": 10,
-  "total": 1,
-  "pages": 1,
-  "data": [
-    {
-      "_id": "sensor-data-id",
-      "userId": "user-id",
-      "deviceId": "fall-device",
-      "timestamp": "2026-05-18T10:00:00.000Z",
-      "isFallDetected": true,
-      "fallScore": 3
-    }
-  ]
-}
-```
-
-### Dashboard
-
-```http
-GET /api/admin/dashboard
-Authorization: Bearer <admin-token>
-```
-
-Response:
-
-```json
-{
-  "success": true,
-  "data": {
-    "totalUsers": 10,
-    "totalSensorRecords": 125,
-    "totalFalls": 4,
-    "latestFalls": [],
-    "latestSensorRecords": []
-  }
-}
-```
-
-If the token belongs to a non-admin user, the API returns:
-
-```json
-{
-  "success": false,
-  "message": "Admin access required"
-}
-```
-
-## Test
-
-Run the full backend test suite:
+### 1. AI Mikroservisi (Python/FastAPI)
+AI mikroservisinin aktif olması, modelin doğru sonuç verebilmesi için gereklidir (Varsayılan port: `8000`).
 
 ```bash
-npm test
+cd ai-service
+
+# Gerekli bağımlılıkların yüklenmesi
+pip install -r requirements.txt
+
+# Mikroservisi başlatma
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Run tests in watch mode:
+### 2. Backend (Node.js/Express)
+Ana iş mantığını ve soket sunucusunu barındıran yapıdır (Varsayılan port: `5000`).
 
 ```bash
-npm run test:watch
-```
+cd backend
 
-The tests use Jest, Supertest, and an in-memory MongoDB instance, so they do not write to the configured development database.
+# Gerekli paketlerin yüklenmesi
+npm install
 
-## Environment
-
-Create a `.env` file from `.env.example` before running the server:
-
-```bash
+# .env dosyasını oluşturun (ya da yukarıdaki şablonu içine kopyalayın)
 cp .env.example .env
+
+# Sunucuyu geliştirici modunda başlatma
+npm run dev
+# veya standart başlangıç: npm start
 ```
 
-Available variables:
+### 3. Web Yönetim Paneli (React/Vite)
+Adminlerin gerçek zamanlı izleme yapabildiği panel katmanıdır.
 
-- `NODE_ENV`: runtime environment, for example `development` or `production`.
-- `PORT`: HTTP port, defaults to `5000`.
-- `MONGO_URI`: MongoDB connection string.
-- `JWT_SECRET`: secret used to sign JWT tokens. Use a long random value in production.
-- `CORS_ORIGIN`: allowed browser origins. Use a comma-separated list for multiple origins, for example `https://app.example.com,https://admin.example.com`.
-- `RATE_LIMIT_WINDOW_MS`: rate limit window in milliseconds.
-- `RATE_LIMIT_MAX`: max requests per IP per window.
+```bash
+cd web-panel
 
-## Deployment Notes
+# Gerekli paketlerin yüklenmesi
+npm install
 
-- Set `NODE_ENV=production`.
-- Set a production `MONGO_URI`; do not use the test or local database.
-- Set a strong `JWT_SECRET` through the deployment platform secret manager.
-- Set `CORS_ORIGIN` to the deployed frontend origin instead of `*`.
-- Configure `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX` for the expected traffic level.
-- Run `npm install --production` and start with `npm start`.
-- Use `GET /health` for uptime checks.
+# Geliştirme sunucusunu başlatma
+npm run dev
+```
+
+### 4. Mobil İstemci (React Native/Expo)
+Uygulamayı fiziksel bir telefonda çalıştırmak için "Expo Go" uygulamasını kullanabilirsiniz.
+
+```bash
+cd mobile
+
+# Gerekli bağımlılıkların yüklenmesi
+npm install
+
+# Uygulamayı başlatma
+npx expo start
+```
+*(Komut sonrası terminalde çıkan QR kodu, cihazınızdaki Expo Go kamerasına okutarak test sürecine başlayabilirsiniz.)*
+
+## 👥 Ekip
+
+Bu proje, bir ekip çalışmasının ürünü olarak akademik kapsamda geliştirilmiştir:
+
+- **Proje Danışmanları:** Doç. Dr. İzzet Fatih ŞENTÜRK / Arş. Gör. Yusuf KAYIPMAZ
+- **Geliştiriciler:** 
+  - Hasna Şahinoğlu
+  - Sudenur Elmas
+  - Halime Buse Yalçın
+
+---
+
+> 🎓 *Bu platform, Bursa Teknik Üniversitesi Bilgisayar Mühendisliği Bölümü **"Node.js ile Web Programlama"** dersi dönem projesi kapsamında tasarlanmış ve hayata geçirilmiştir.*
