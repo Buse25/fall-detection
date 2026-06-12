@@ -1,5 +1,6 @@
 const SensorData = require("../models/SensorData");
 const Alarm = require("../models/Alarm");
+const Device = require("../models/Device");
 
 const calculateMagnitude = (accelerometer) => {
   const { x, y, z } = accelerometer;
@@ -41,6 +42,13 @@ const createSensorData = async (req, res) => {
       fallScore,
       detectionMethod,
     });
+
+    // Cihazı upsert et: varsa lastSeen/isOnline güncelle, yoksa yeni kayıt oluştur.
+    await Device.findOneAndUpdate(
+      { deviceId },
+      { userId, lastSeen: new Date(), isOnline: true },
+      { upsert: true, setDefaultsOnInsert: true, new: true }
+    );
 
     if (isFallDetected) {
       await Alarm.create({

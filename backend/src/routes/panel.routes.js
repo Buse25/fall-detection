@@ -2,6 +2,7 @@ const express = require("express");
 const SensorData = require("../models/SensorData");
 const Alarm = require("../models/Alarm");
 const User = require("../models/User");
+const Device = require("../models/Device");
 const { protect, adminOnly } = require("../middleware/auth.middleware");
 
 const router = express.Router();
@@ -143,36 +144,45 @@ router.get("/sensor-chart", async (req, res) => {
 // İsteğe bağlı query: ?userId=<id>  — belirli kullanıcının cihazlarına filtrele.
 router.get("/devices", async (req, res) => {
     try {
-        const base = buildBaseFilter(req, req.query.userId);
+        // Device tablosundan doğrudan sorgula; SensorData aggregation kaldırıldı.
+        const deviceFilter = {};
+        if (req.query.userId) {
+            deviceFilter.userId = req.query.userId;
+        }
+        // Admin tüm cihazları görür; userId query parametresi varsa belirli kullanıcıya filtrele.
 
-        const devicesData = await SensorData.aggregate([
-            { $match: base },
-            { $sort: { timestamp: -1 } },
-            {
-                $group: {
-                    _id: "$deviceId",
-                    lastSeen: { $first: "$timestamp" },
-                    magnitude: { $first: "$accelerometer.magnitude" },
-                    // userId: cihazın sahibini kayıt edelim (admin tablosu için)
-                    userId: { $first: "$userId" },
-                    fallCount: {
-                        $sum: { $cond: [{ $eq: ["$isFallDetected", true] }, 1, 0] },
-                    },
-                },
-            },
-            { $sort: { lastSeen: -1 } },
-        ]);
+        const rawDevices = await Device.find(deviceFilter)
+            .populate("userId", "name email")
+            .sort({ lastSeen: -1 })
+            .lean();
 
-        const devices = devicesData
-            .filter((d) => d._id)
-            .map((d) => ({
-                deviceId: d._id,
-                lastSeen: d.lastSeen,
-                magnitude: d.magnitude || 0,
-                fallCount: d.fallCount || 0,
-                userId: d.userId || null,
-                isOnline: Date.now() - new Date(d.lastSeen).getTime() < 5 * 60 * 1000,
-            }));
+        // Her cihaz için hafif bir countDocuments ile düşme sayısını hesapla.
+        const devices = await Promise.all(
+            rawDevices.map(async (dev) => {
+                const fallCount = await SensorData.countDocuments({
+                    deviceId: dev.deviceId,
+                    isFallDetected: true,
+                });
+
+                return {
+                    deviceId:   dev.deviceId,
+                    deviceName: dev.deviceName,
+                    lastSeen:   dev.lastSeen,
+                    // isOnline: Device tablosundaki değeri önce al;
+                    // ayrıca son 5 dakika aktivite kontrolüyle de doğrula.
+                    isOnline:
+                        dev.isOnline === true ||
+                        (dev.lastSeen
+                            ? Date.now() - new Date(dev.lastSeen).getTime() < 5 * 60 * 1000
+                            : false),
+                    fallCount,
+                    // userId: populate edilmiş nesne veya ham ObjectId
+                    userId: dev.userId || null,
+                    // magnitude: Device tablosunda saklanmıyor; panel için varsayılan 0.
+                    magnitude: 0,
+                };
+            })
+        );
 
         return res.status(200).json({
             success: true,

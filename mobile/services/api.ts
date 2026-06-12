@@ -60,4 +60,24 @@ export function authHeaders(): Record<string, string> {
   };
 }
 
+/**
+ * Cihaza özgü kalıcı bir kimlik döner.
+ * - AsyncStorage'da `app_device_id` anahtarı varsa onu kullanır.
+ * - Yoksa benzersiz bir ID üretir, AsyncStorage'a kaydeder ve döndürür.
+ * - Bu sayede uygulama her yeniden başlatıldığında aynı ID korunur.
+ */
+export async function getOrCreateDeviceId(): Promise<string> {
+  const STORAGE_KEY = 'app_device_id';
+  try {
+    const existing = await AsyncStorage.getItem(STORAGE_KEY);
+    if (existing) return existing;
 
+    const newId = `Device-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    await AsyncStorage.setItem(STORAGE_KEY, newId);
+    return newId;
+  } catch (e) {
+    console.error('Error managing device ID in AsyncStorage:', e);
+    // Depolama başarısız olursa en azından oturum genelinde tutarlı bir ID üret.
+    return `Device-fallback-${Date.now()}`;
+  }
+}
