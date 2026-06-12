@@ -63,10 +63,7 @@ export default function RecentAlarms({ alarms = [] }) {
               </div>
             </div>
 
-            {/* Sağ: rozet */}
-            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
-              <AlarmBadge severity={alarm.severity} isResolved={alarm.isResolved} />
-            </div>
+            {/* Sağ: rozet kaldırıldı */}
           </li>
         );
       })}

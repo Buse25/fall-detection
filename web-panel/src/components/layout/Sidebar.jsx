@@ -7,10 +7,10 @@ import { useAuth } from "../../context/AuthContext";
 import { disconnectSocket } from "../../socket/socket";
 
 const navItems = [
-  { to: "/dashboard", icon: "dashboard",   label: "Dashboard" },
-  { to: "/devices",   icon: "devices",     label: "Device Management" },
-  { to: "/alarms",    icon: "history",     label: "Alarm History" },
-  { to: "/profile",   icon: "person",      label: "Profile" },
+  { to: "/dashboard", icon: "dashboard",   label: "Kontrol Paneli" },
+  { to: "/devices",   icon: "devices",     label: "Cihaz Yönetimi" },
+  { to: "/alarms",    icon: "history",     label: "Alarm Geçmişi" },
+  { to: "/profile",   icon: "person",      label: "Profil" },
 ];
 
 export default function Sidebar() {
@@ -89,7 +89,7 @@ export default function Sidebar() {
           <span className="material-symbols-outlined mr-stack-sm group-hover:text-error">
             logout
           </span>
-          <span className="font-label-md text-label-md">Logout</span>
+          <span className="font-label-md text-label-md">Çıkış Yap</span>
         </button>
       </div>
     </nav>
