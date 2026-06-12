@@ -5,6 +5,7 @@ Bu servis, backend'den gelen sensör pencereleri (`sensor_window`) için düşme
 ## Çalıştırma
 
 ```bash
+venv\Scripts\activate.bat
 uvicorn main:app --reload
 ```
 

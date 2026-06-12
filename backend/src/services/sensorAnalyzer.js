@@ -1,14 +1,17 @@
 const { redisClient } = require("../config/redisClient");
 
 // Redis'teki buffer'ın yaşam süresi (saniye).
-// Her yeni veri eklediğinde TTL sıfırlanır; son veriden 3 sn sonra otomatik temizlenir.
-const BUFFER_TTL_SEC = 3;
+// Her yeni veri eklendiğinde TTL sıfırlanır; son veriden 10 sn sonra otomatik temizlenir.
+// 10 sn / 1.5 sn pencere ≈ 6-7 örnek biriktirir.
+const BUFFER_TTL_SEC = 10;
 
 // Anlamlı bir varyans hesabı için gereken minimum örnek sayısı.
-// 50 Hz'de 1.5 sn'lik pencereler alınırsa her ~1.5 sn'de bir örnek gelir;
-// 3 sn TTL ile buffer'da en fazla ~2 örnek birikir.
-// Daha uzun geçmişe ihtiyaç duyulursa BUFFER_TTL_SEC artırılabilir.
-const MIN_SAMPLES = 2;
+// 5 örnek ile 2 örneğe kıyasla istatistiksel olarak çok daha güvenilir varyans üretilir.
+const MIN_SAMPLES = 5;
+
+// Buffer'da tutulacak maksimum örnek sayısı (hafıza sızıntısı önlemi).
+// Sürekli aktif cihazlarda liste sonsuza büyümez; yalnızca son MAX_BUFFER_SIZE pencere saklanır.
+const MAX_BUFFER_SIZE = 20;
 
 /**
  * Redis key formatı: fall:buffer:{deviceId}
@@ -24,6 +27,8 @@ const bufferKey = (deviceId) => `fall:buffer:${deviceId}`;
 const addSensorData = async (deviceId, accelerationMagnitude) => {
     const key = bufferKey(deviceId);
     await redisClient.rPush(key, String(accelerationMagnitude));
+    // Listenin sonsuza büyümesini önle: yalnızca son MAX_BUFFER_SIZE girişi sakla.
+    await redisClient.lTrim(key, -MAX_BUFFER_SIZE, -1);
     await redisClient.expire(key, BUFFER_TTL_SEC);
 };
 

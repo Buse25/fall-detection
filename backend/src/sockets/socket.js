@@ -3,9 +3,10 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const SensorData = require("../models/SensorData");
 const Alarm = require("../models/Alarm");
+const { redisClient } = require("../config/redisClient");
 const { detectFallRuleBased } = require("../analysis/fallDetection");
 const { predictFall } = require("../services/aiService");
-const { setImpactDetected, getState, clearState } = require("../services/fallStateManager");
+const { setImpactDetected, getState, clearState, setCooldown, isInCooldown } = require("../services/fallStateManager");
 const { addSensorData, getVariance } = require("../services/sensorAnalyzer");
 const {
     updateLastActive,
@@ -19,9 +20,10 @@ const {
 } = require("../services/inactivityManager");
 
 // ─── Düşme Varyans Eşikleri ──────────────────────────────────────────────────
-// Test sırasında cihaz ve ortama göre ayarlanması gerekebilir.
-const VARIANCE_LOW_THRESHOLD  = 0.5;   // g² — düşük varyans: kişi sabit → FALL_CONFIRMED
-const VARIANCE_HIGH_THRESHOLD = 1.5;   // g² — yüksek varyans: kişi hareket ediyor → iptal
+// IMPACT_DETECTED → FALL_CONFIRMED : variance <  VARIANCE_LOW_THRESHOLD  (kişi hareketsiz)
+// IMPACT_DETECTED → NORMAL (iptal) : variance >= VARIANCE_LOW_THRESHOLD  (hareket devam ediyor)
+// Dead zone (eski 0.5–1.5 arası) kaldırıldı; herhangi ölçülebilir hareket yanlış alarmı iptal eder.
+const VARIANCE_LOW_THRESHOLD = 0.5;   // g²
 
 // ─── Hareketsizlik Eşikleri ───────────────────────────────────────────────────
 // Gece/gündüz eşikleri inactivityManager.getInactivityThreshold() ile hesaplanır.
@@ -85,6 +87,9 @@ function initSocket(httpServer) {
         socket.join(userRoom);
         // lastDeviceId: sensor_window handler'ında set edilir; inactivity_cancel handler'ında kullanılır.
         socket.lastDeviceId = null;
+        // D3: Her yeni socket bağlantısında inactivity timer'ı "başlatılmadı" olarak işaretle.
+        // İlk sensor_window'da stale Redis key'ler temizlenip taze başlangıç yapılır.
+        socket._inactivityInitialized = false;
 
         // Admin kullanıcılar her yeni bağlantıda (sayfa yenileme dahil) otomatik olarak
         // panel odasına alınır. Bu sayede web panelinin join_panel_room emit etmesini
@@ -107,8 +112,14 @@ function initSocket(httpServer) {
         // Mobile "İyiyim (İptal Et)" butonu tıklandığında emit edilir.
         // Fall state ve Alarm kaydı REST API (PATCH /api/alarms/:id/resolve) tarafından
         // güncellenir; burada panel odasını bilgilendiriyoruz.
-        socket.on("fall_cancel", ({ alarmId } = {}) => {
-            console.log(`[FallSM] Alarm kullanıcı tarafından iptal edildi | alarmId: ${alarmId || "yok"} | user: ${socket.userId}`);
+        socket.on("fall_cancel", async ({ alarmId } = {}) => {
+            const deviceId = socket.lastDeviceId;
+            // D1: State temizle ve cooldown başlat; yeni düşme tespitini engelle.
+            if (deviceId) {
+                await clearState(deviceId);
+                await setCooldown(deviceId);
+            }
+            console.log(`[FallSM] Alarm kullanıcı tarafından iptal edildi | alarmId: ${alarmId || "yok"} | device: ${deviceId || "bilinmiyor"} | user: ${socket.userId}`);
             io.to(`panel:${socket.userId}`).emit("alarm_resolved", {
                 alarmId,
                 resolvedBy: "user",
@@ -186,176 +197,219 @@ function initSocket(httpServer) {
                     detectionMethod: aiRawResult ? "ai-model" : "rule-based",
                 });
 
-                // ── 4. AI yoksa kural tabanlı fallback ────────────────────────
-                if (!aiRawResult) {
-                    const ruleDet = detectFallRuleBased(lastReading);
-                    if (ruleDet.isFallDetected) {
-                        const alarm = await Alarm.create({
-                            userId: socket.userId,
-                            deviceId,
-                            sensorDataId: sensorData._id,
-                            alarmType: "fall",
-                            severity: "high",
-                            message: "Fall detected by rule-based fallback (AI unavailable)",
-                        });
-                        const fallPayload = {
-                            alarmId: alarm._id,
-                            fallScore: ruleDet.fallScore,
-                            detectionMethod: "rule-based",
-                            countdownSec: 10,
-                        };
-                        io.to(userRoom).emit("fall_detected", fallPayload);
-                        io.to(`panel:${socket.userId}`).emit("fall_detected", fallPayload);
-                    }
+                // ── 4–6. Per-device lock → State Machine ─────────────────────
+                // D5: Aynı cihaz için eş zamanlı sensor_window handler'larının State Machine'e
+                // birlikte girmesini engeller. TTL=5sn: handler çökmesi durumunda lock otomatik açılır.
+                const lockKey = `fall:lock:${deviceId}`;
+                const lockAcquired = await redisClient.set(lockKey, "1", { NX: true, EX: 5 });
+                if (!lockAcquired) {
+                    console.warn(`[FallSM] Lock alınamadı, pencere atlanıyor | device: ${deviceId}`);
                     return;
                 }
 
-                // ── 5. Fall State Machine ─────────────────────────────────────
-                const fallCurrentState = await getState(deviceId);
-
-                if (fallCurrentState === "NORMAL") {
-                    if (aiRawResult.is_fall) {
-                        await setImpactDetected(deviceId, data?.windowEnd || new Date().toISOString());
-                        console.log(
-                            `[FallSM] NORMAL → IMPACT_DETECTED` +
-                            ` | device: ${deviceId}` +
-                            ` | probability: ${aiRawResult.probability.toFixed(3)}`
-                        );
+                try {
+                    // ── 4. AI yoksa kural tabanlı fallback ────────────────────
+                    if (!aiRawResult) {
+                        const ruleDet = detectFallRuleBased(lastReading);
+                        if (ruleDet.isFallDetected) {
+                            // D1: Cooldown aktifse çoklu alarm üretmeyi engelle
+                            if (await isInCooldown(deviceId)) {
+                                console.log(`[FallSM] Kural tabanlı: cooldown aktif, alarm üretilmedi | device: ${deviceId}`);
+                            } else {
+                                const alarm = await Alarm.create({
+                                    userId: socket.userId,
+                                    deviceId,
+                                    sensorDataId: sensorData._id,
+                                    alarmType: "fall",
+                                    severity: "high",
+                                    message: "Fall detected by rule-based fallback (AI unavailable)",
+                                });
+                                await setCooldown(deviceId); // D1: cooldown başlat
+                                const fallPayload = {
+                                    alarmId: alarm._id,
+                                    fallScore: ruleDet.fallScore,
+                                    detectionMethod: "rule-based",
+                                    countdownSec: 10,
+                                };
+                                io.to(userRoom).emit("fall_detected", fallPayload);
+                                io.to(`panel:${socket.userId}`).emit("fall_detected", fallPayload);
+                            }
+                        }
+                        return;
                     }
 
-                } else if (fallCurrentState === "IMPACT_DETECTED") {
-                    const variance = await getVariance(deviceId);
-                    console.log(
-                        `[FallSM] IMPACT_DETECTED | device: ${deviceId}` +
-                        ` | varyans: ${variance !== null ? variance.toFixed(4) : "yetersiz veri"}`
-                    );
+                    // ── 5. Fall State Machine ─────────────────────────────────
+                    const fallCurrentState = await getState(deviceId);
 
-                    if (variance === null) return;
+                    if (fallCurrentState === "NORMAL") {
+                        if (aiRawResult.is_fall) {
+                            // D1: Cooldown aktifse IMPACT_DETECTED geçişini engelle
+                            if (await isInCooldown(deviceId)) {
+                                console.log(
+                                    `[FallSM] Cooldown aktif, IMPACT_DETECTED atlandı` +
+                                    ` | device: ${deviceId}`
+                                );
+                            } else {
+                                await setImpactDetected(deviceId, data?.windowEnd || new Date().toISOString());
+                                console.log(
+                                    `[FallSM] NORMAL → IMPACT_DETECTED` +
+                                    ` | device: ${deviceId}` +
+                                    ` | probability: ${aiRawResult.probability.toFixed(3)}`
+                                );
+                            }
+                        }
 
-                    if (variance < VARIANCE_LOW_THRESHOLD) {
-                        // ── FALL_CONFIRMED ──────────────────────────────────
-                        const alarm = await Alarm.create({
-                            userId: socket.userId,
-                            deviceId,
-                            sensorDataId: sensorData._id,
-                            alarmType: "fall",
-                            severity: "high",
-                            message: `Fall confirmed (AI + low variance: ${variance.toFixed(4)})`,
-                        });
-                        await clearState(deviceId);
-                        // S1 kararı: clearInactivity + updateLastActive ardışık, araya başka await yok.
+                    } else if (fallCurrentState === "IMPACT_DETECTED") {
+                        const variance = await getVariance(deviceId);
+                        console.log(
+                            `[FallSM] IMPACT_DETECTED | device: ${deviceId}` +
+                            ` | varyans: ${variance !== null ? variance.toFixed(4) : "yetersiz veri (MIN_SAMPLES bekleniyor)"}`
+                        );
+
+                        if (variance === null) return; // yetersiz örnek — sonraki pencereyi bekle
+
+                        if (variance < VARIANCE_LOW_THRESHOLD) {
+                            // ── FALL_CONFIRMED ──────────────────────────────────
+                            const alarm = await Alarm.create({
+                                userId: socket.userId,
+                                deviceId,
+                                sensorDataId: sensorData._id,
+                                alarmType: "fall",
+                                severity: "high",
+                                message: `Fall confirmed (AI + low variance: ${variance.toFixed(4)})`,
+                            });
+                            await clearState(deviceId);
+                            await setCooldown(deviceId); // D1: cooldown başlat
+                            await clearInactivity(deviceId);
+                            await updateLastActive(deviceId);
+
+                            console.log(
+                                `[FallSM] IMPACT_DETECTED → FALL_CONFIRMED | alarmId: ${alarm._id}`
+                            );
+
+                            const fallPayload = {
+                                alarmId: alarm._id,
+                                fallScore: aiRawResult.probability,
+                                detectionMethod: "ai-model",
+                                countdownSec: 10,
+                            };
+                            io.to(userRoom).emit("fall_detected", fallPayload);
+                            io.to(`panel:${socket.userId}`).emit("fall_detected", fallPayload);
+
+                        } else {
+                            // D2: Dead zone kaldırıldı — varyans >= LOW_THRESHOLD → hareket var → yanlış pozitif iptal
+                            await clearState(deviceId);
+                            console.log(
+                                `[FallSM] IMPACT_DETECTED → NORMAL (yanlış alarm iptal, hareket var)` +
+                                ` | device: ${deviceId} | varyans: ${variance.toFixed(4)}`
+                            );
+                        }
+                        return; // IMPACT_DETECTED aşamasında inactivity bloğunu atla
+                    }
+
+                    // ── 6. Inactivity State Machine ───────────────────────────
+                    // Yalnızca fall state NORMAL olduğunda çalışır (yukarıdaki return ile guard edildi).
+
+                    // D3: İlk sensor_window'da stale Redis key'leri temizle ve timer'ı sıfırla.
+                    // _inactivityInitialized socket başına bir kez false → true'ya geçer;
+                    // bu sayede önceki oturumdan kalan PRE_ALARM / eski last_active silinir.
+                    if (!socket._inactivityInitialized) {
+                        socket._inactivityInitialized = true;
                         await clearInactivity(deviceId);
                         await updateLastActive(deviceId);
-
                         console.log(
-                            `[FallSM] IMPACT_DETECTED → FALL_CONFIRMED | alarmId: ${alarm._id}`
+                            `[Inactivity] İlk pencere — stale state temizlendi, timer sıfırlandı` +
+                            ` | device: ${deviceId}`
                         );
-
-                        const fallPayload = {
-                            alarmId: alarm._id,
-                            fallScore: aiRawResult.probability,
-                            detectionMethod: "ai-model",
-                            countdownSec: 10,
-                        };
-                        io.to(userRoom).emit("fall_detected", fallPayload);
-                        io.to(`panel:${socket.userId}`).emit("fall_detected", fallPayload);
-
-                    } else if (variance > VARIANCE_HIGH_THRESHOLD) {
-                        await clearState(deviceId);
-                        console.log(
-                            `[FallSM] IMPACT_DETECTED → NORMAL (yanlış alarm iptal)` +
-                            ` | device: ${deviceId} | varyans: ${variance.toFixed(4)}`
-                        );
+                        return;
                     }
-                    return; // IMPACT_DETECTED aşamasındayken inactivity bloğunu atlıyoruz
-                }
 
-                // ── 6. Inactivity State Machine ───────────────────────────────
-                // Yalnızca fall state NORMAL olduğunda çalışır (yukarıdaki return ile guard edildi).
+                    const lastActiveRaw = await getLastActive(deviceId);
+                    if (lastActiveRaw === null) {
+                        await updateLastActive(deviceId);
+                        console.log(`[Inactivity] last_active initialize edildi | device: ${deviceId}`);
+                        return;
+                    }
 
-                // Talimat #2: İlk penceredeyse last_active'i initialize et.
-                const lastActiveRaw = await getLastActive(deviceId);
-                if (lastActiveRaw === null) {
-                    await updateLastActive(deviceId);
-                    console.log(`[Inactivity] last_active initialize edildi | device: ${deviceId}`);
-                    return;
-                }
+                    const inactVariance = await getVariance(deviceId);
 
-                const variance = await getVariance(deviceId);
+                    if (inactVariance !== null && inactVariance > MOVEMENT_VARIANCE_THRESHOLD) {
+                        // Hareket tespit edildi: last_active güncelle
+                        await updateLastActive(deviceId);
 
-                // Talimat #4: updateLastActive → sonra PreCheck sırası korunuyor.
-                if (variance !== null && variance > MOVEMENT_VARIANCE_THRESHOLD) {
-                    // Hareket tespit edildi: last_active güncelle
-                    await updateLastActive(deviceId);
+                        // PRE_ALARM'daki kullanıcı hareket etti → iptal et
+                        const inactStateOnMove = await getInactivityState(deviceId);
+                        if (inactStateOnMove === "PRE_ALARM") {
+                            await clearInactivity(deviceId);
+                            await updateLastActive(deviceId);
+                            console.log(
+                                `[Inactivity] PRE_ALARM otomatik iptal (hareket tespit edildi)` +
+                                ` | device: ${deviceId} | varyans: ${inactVariance.toFixed(4)}`
+                            );
+                            io.to(userRoom).emit("inactivity_cancelled", {});
+                        }
+                        return;
+                    }
 
-                    // Sonra PRE_ALARM kontrolü: hareket varsa PRE_ALARM'ı iptal et
+                    // Hareketsiz — inactivity threshold kontrolü
+                    const now = Date.now();
+                    const lastActive = new Date(lastActiveRaw).getTime();
+                    const idleSec = (now - lastActive) / 1000;
+
+                    // Gece/gündüz uyku takvimine göre dinamik eşik
+                    const inactivityThresholdSec = getInactivityThreshold(socket.sleepSchedule);
+                    if (idleSec < inactivityThresholdSec) return;
+
                     const inactState = await getInactivityState(deviceId);
-                    if (inactState === "PRE_ALARM") {
-                        await clearInactivity(deviceId);
-                        await updateLastActive(deviceId);
+
+                    if (inactState === "NORMAL") {
+                        const set = await setPreAlarm(deviceId); // NX: yalnızca bir kez set edilir
+                        if (set) {
+                            console.log(
+                                `[Inactivity] NORMAL → PRE_ALARM | device: ${deviceId}` +
+                                ` | idle: ${Math.round(idleSec)}s`
+                            );
+                            io.to(userRoom).emit("inactivity_pre_alarm", {
+                                countdownSec: PRE_ALARM_TIMEOUT_SEC,
+                            });
+                        }
+
+                    } else if (inactState === "PRE_ALARM") {
+                        const preStart = await getPreAlarmStart(deviceId);
+                        if (!preStart) return;
+
+                        const preElapsedSec = (now - new Date(preStart).getTime()) / 1000;
+                        if (preElapsedSec < PRE_ALARM_TIMEOUT_SEC) return;
+
+                        // PRE_ALARM_TIMEOUT aşıldı → CONFIRMED
+                        await setConfirmed(deviceId);
+                        const alarm = await Alarm.create({
+                            userId: socket.userId,
+                            deviceId,
+                            sensorDataId: sensorData._id,
+                            alarmType: "inactivity",
+                            severity: "high",
+                            message: `Inactivity confirmed (idle: ${Math.round(idleSec)}s, pre_alarm: ${Math.round(preElapsedSec)}s)`,
+                        });
                         console.log(
-                            `[Inactivity] PRE_ALARM otomatik iptal (hareket tespit edildi)` +
-                            ` | device: ${deviceId} | varyans: ${variance.toFixed(4)}`
+                            `[Inactivity] PRE_ALARM → CONFIRMED | alarmId: ${alarm._id}` +
+                            ` | device: ${deviceId}`
                         );
-                        io.to(userRoom).emit("inactivity_cancelled", {});
-                    }
-                    return;
-                }
-
-                // Hareketsiz — inactivity threshold kontrolü
-                const now = Date.now();
-                const lastActive = new Date(lastActiveRaw).getTime();
-                const idleSec = (now - lastActive) / 1000;
-
-                // Gece/gündüz uyku takvimine göre dinamik eşik
-                const inactivityThresholdSec = getInactivityThreshold(socket.sleepSchedule);
-                if (idleSec < inactivityThresholdSec) return;
-
-                const inactState = await getInactivityState(deviceId);
-
-                if (inactState === "NORMAL") {
-                    const set = await setPreAlarm(deviceId);  // NX: yalnızca bir kez set edilir
-                    if (set) {
-                        console.log(
-                            `[Inactivity] NORMAL → PRE_ALARM | device: ${deviceId}` +
-                            ` | idle: ${Math.round(idleSec)}s`
-                        );
-                        io.to(userRoom).emit("inactivity_pre_alarm", {
-                            countdownSec: PRE_ALARM_TIMEOUT_SEC,
+                        io.to(userRoom).emit("emergency_alert", {
+                            alarmId: alarm._id,
+                            type: "inactivity",
+                        });
+                        io.to(`panel:${socket.userId}`).emit("emergency_alert", {
+                            alarmId: alarm._id,
+                            type: "inactivity",
                         });
                     }
+                    // CONFIRMED ise hiçbir şey yapma — alarm zaten gönderildi
 
-                } else if (inactState === "PRE_ALARM") {
-                    const preStart = await getPreAlarmStart(deviceId);
-                    if (!preStart) return;
-
-                    const preElapsedSec = (now - new Date(preStart).getTime()) / 1000;
-                    if (preElapsedSec < PRE_ALARM_TIMEOUT_SEC) return;
-
-                    // PRE_ALARM_TIMEOUT aşıldı → CONFIRMED
-                    await setConfirmed(deviceId);
-                    const alarm = await Alarm.create({
-                        userId: socket.userId,
-                        deviceId,
-                        sensorDataId: sensorData._id,
-                        alarmType: "inactivity",
-                        severity: "high",
-                        message: `Inactivity confirmed (idle: ${Math.round(idleSec)}s, pre_alarm: ${Math.round(preElapsedSec)}s)`,
-                    });
-                    console.log(
-                        `[Inactivity] PRE_ALARM → CONFIRMED | alarmId: ${alarm._id}` +
-                        ` | device: ${deviceId}`
-                    );
-                    io.to(userRoom).emit("emergency_alert", {
-                        alarmId: alarm._id,
-                        type: "inactivity",
-                    });
-                    io.to(`panel:${socket.userId}`).emit("emergency_alert", {
-                        alarmId: alarm._id,
-                        type: "inactivity",
-                    });
+                } finally {
+                    // D5: Lock her koşulda serbest bırakılır (return veya exception dahil)
+                    await redisClient.del(lockKey);
                 }
-                // CONFIRMED ise hiçbir şey yapma — alarm zaten gönderildi
 
             } catch (error) {
                 console.error(`[Socket] sensor_window işlenirken hata (${socket.id}):`, error.message);

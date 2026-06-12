@@ -11,6 +11,7 @@ import CatchMeIcon from '@/components/CatchMeIcon';
 import { clearAuth, getUserId, getUserName } from '@/services/api';
 import {
   emitSensorWindow,
+  disconnectSocket,
   onSocketConnectionChange,
   type SensorReading,
 } from '@/services/socket';
@@ -50,8 +51,12 @@ export default function HomeScreen() {
     return () => setIsStreaming(false);
   }, []);
 
-  /* Sensör dinleyicileri — ref'lere yazar, state güncellemez (performans) */
+  /* Sensör dinleyicileri — ref'lere yazar, state güncellemez (performans).
+   * D4: isStreaming bağımlılığı ile izleme durdurulduğunda donanım abonelikleri de iptal edilir.
+   * Eski deps=[] ile "Durdur" butonu interval'ı durdururdu ama donanım 50 Hz'de aktif kalırdı. */
   useEffect(() => {
+    if (!isStreaming) return; // izleme durursa donanıma abone olma
+
     Accelerometer.setUpdateInterval(SAMPLE_INTERVAL_MS);
     Gyroscope.setUpdateInterval(SAMPLE_INTERVAL_MS);
 
@@ -66,7 +71,7 @@ export default function HomeScreen() {
       accSub.remove();
       gyroSub.remove();
     };
-  }, []);
+  }, [isStreaming]);
 
   /* Socket bağlantı durumunu izle */
   useEffect(() => {
@@ -149,6 +154,7 @@ export default function HomeScreen() {
           text: 'Evet',
           onPress: () => {
             setIsStreaming(false);
+            disconnectSocket(); // D4: socket bağlantısını kapat
             clearAuth();
             router.replace('/');
           },

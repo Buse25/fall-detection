@@ -53,12 +53,16 @@ function getInactivityThreshold(sleepSchedule) {
 const lastActiveKey  = (d) => `inactivity:last_active:${d}`;
 const stateKey       = (d) => `inactivity:state:${d}`;
 
+// Inactivity key'lerinin Redis'te maksimum yaşam süresi (saniye).
+// Stale key'lerin kalıcı olarak birikmesini önler; sunucu yeniden başlatmalarında temizlenir.
+const INACTIVITY_KEY_TTL_SEC = 86400; // 24 saat
+
 /**
  * Son hareket zamanını şu an (ISO) olarak yazar.
  * Hareket tespit edildiğinde veya cihaz ilk kez görüldüğünde çağrılır.
  */
 const updateLastActive = async (deviceId) => {
-    await redisClient.set(lastActiveKey(deviceId), new Date().toISOString());
+    await redisClient.set(lastActiveKey(deviceId), new Date().toISOString(), { EX: INACTIVITY_KEY_TTL_SEC });
 };
 
 /**
@@ -94,7 +98,7 @@ const setPreAlarm = async (deviceId) => {
         state: "PRE_ALARM",
         pre_alarm_start: new Date().toISOString(),
     });
-    const result = await redisClient.set(stateKey(deviceId), value, { NX: true });
+    const result = await redisClient.set(stateKey(deviceId), value, { NX: true, EX: INACTIVITY_KEY_TTL_SEC });
     return result !== null;
 };
 
@@ -110,7 +114,8 @@ const setConfirmed = async (deviceId) => {
 
     await redisClient.set(
         stateKey(deviceId),
-        JSON.stringify({ state: "CONFIRMED", pre_alarm_start })
+        JSON.stringify({ state: "CONFIRMED", pre_alarm_start }),
+        { EX: INACTIVITY_KEY_TTL_SEC }
     );
 };
 
